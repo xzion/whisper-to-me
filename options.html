@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Whisper to Me - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Whisper to Me Settings</h1>
+      <p>Configure your OpenAI Text-to-Speech preferences</p>
+    </header>
+
+    <main>
+      <section class="settings-section">
+        <h2>API Configuration</h2>
+        <div class="setting-item">
+          <label for="api-key">OpenAI API Key</label>
+          <div class="api-key-group">
+            <input type="password" id="api-key" placeholder="sk-...">
+            <button id="toggle-visibility" class="icon-btn" aria-label="Toggle visibility">👁️</button>
+          </div>
+          <small>Your API key is encrypted and stored securely. Get one at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></small>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Voice Settings</h2>
+        
+        <div class="setting-item">
+          <label for="voice-select">Voice</label>
+          <div class="voice-selection">
+            <select id="voice-select">
+              <option value="alloy">Alloy - Neutral and balanced</option>
+              <option value="ash">Ash - Expressive and versatile</option>
+              <option value="coral">Coral - Clear and bright</option>
+              <option value="echo">Echo - Warm and conversational</option>
+              <option value="fable">Fable - Expressive and dynamic</option>
+              <option value="nova">Nova - Friendly and upbeat</option>
+              <option value="onyx">Onyx - Deep and authoritative</option>
+              <option value="sage">Sage - Calm and measured</option>
+              <option value="shimmer">Shimmer - Clear and articulate</option>
+            </select>
+            <button id="preview-voice" class="secondary-btn">Preview Voice</button>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <label for="speed-slider">Speech Speed: <span id="speed-value">1.0x</span></label>
+          <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
+          <div class="speed-marks">
+            <span>0.5x</span>
+            <span>0.75x</span>
+            <span>1x</span>
+            <span>1.25x</span>
+            <span>1.5x</span>
+            <span>1.75x</span>
+            <span>2x</span>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <label for="model-select">Model Quality</label>
+          <select id="model-select">
+            <option value="tts-1">TTS-1 (Faster response, standard quality)</option>
+            <option value="tts-1-hd">TTS-1-HD (Higher quality, slightly slower)</option>
+          </select>
+          <small>TTS-1 is optimized for real-time applications, while TTS-1-HD provides better audio quality</small>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Preview Text</h2>
+        <div class="setting-item">
+          <label for="preview-text">Sample Text for Voice Preview</label>
+          <textarea id="preview-text" rows="3">Welcome to Whisper to Me. This extension uses OpenAI's advanced text-to-speech technology to read any selected text aloud with natural, expressive voices.</textarea>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Usage Information</h2>
+        <div class="info-box">
+          <h3>How to Use</h3>
+          <ol>
+            <li>Select any text on a webpage</li>
+            <li>Right-click and choose "Whisper to me"</li>
+            <li>Control playback with the overlay that appears</li>
+          </ol>
+          
+          <h3>Pricing</h3>
+          <p>OpenAI charges based on characters processed:</p>
+          <ul>
+            <li>TTS-1: $0.015 per 1,000 characters</li>
+            <li>TTS-1-HD: $0.030 per 1,000 characters</li>
+          </ul>
+          <p>Maximum text length: 4,096 characters per request</p>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="save-btn" class="primary-btn">Save Settings</button>
+        <button id="reset-btn" class="secondary-btn">Reset to Defaults</button>
+      </div>
+    </main>
+
+    <footer>
+      <p>Whisper to Me v1.0.0 | Not affiliated with OpenAI</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="utils/storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

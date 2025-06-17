@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Whisper to Me - Quick Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <h2>Whisper to Me</h2>
+    
+    <div class="status-section">
+      <div id="api-status" class="status">
+        <span class="status-indicator"></span>
+        <span class="status-text">Checking API key...</span>
+      </div>
+    </div>
+
+    <div class="quick-settings">
+      <div class="setting-group">
+        <label for="voice-select">Voice</label>
+        <select id="voice-select">
+          <option value="alloy">Alloy</option>
+          <option value="ash">Ash</option>
+          <option value="coral">Coral</option>
+          <option value="echo">Echo</option>
+          <option value="fable">Fable</option>
+          <option value="nova">Nova</option>
+          <option value="onyx">Onyx</option>
+          <option value="sage">Sage</option>
+          <option value="shimmer">Shimmer</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label for="speed-slider">Speed: <span id="speed-value">1.0x</span></label>
+        <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="setting-group">
+        <label for="model-select">Model</label>
+        <select id="model-select">
+          <option value="tts-1">TTS-1 (Faster)</option>
+          <option value="tts-1-hd">TTS-1-HD (Better Quality)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="options-btn" class="primary-btn">Full Settings</button>
+    </div>
+
+    <div class="footer">
+      <small>Select text and right-click → "Whisper to me"</small>
+    </div>
+  </div>
+
+  <script src="utils/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
