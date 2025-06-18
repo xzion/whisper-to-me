@@ -13,6 +13,8 @@ let isPaused = false;
 let currentAudioBuffer = null;
 let playbackStartTime = 0;
 let pausedAt = 0;
+let totalDuration = 0;
+let updateTimeInterval = null;
 
 // Create and inject overlay HTML
 function createOverlay() {
@@ -42,8 +44,8 @@ function createOverlay() {
             </svg>
           </button>
         </div>
-        <div class="tts-overlay-progress">
-          <div class="tts-progress-bar"></div>
+        <div class="tts-overlay-time">
+          <span class="tts-time-display">0s of 0s</span>
         </div>
       </div>
       <div class="tts-overlay-status">Preparing audio...</div>
@@ -94,6 +96,57 @@ function updateStatus(status) {
   }
 }
 
+// Format time in seconds to readable format
+function formatTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  if (mins > 0) {
+    return `${mins}m${secs.toString().padStart(2, '0')}s`;
+  } else {
+    return `${secs}s`;
+  }
+}
+
+// Update time display
+function updateTimeDisplay() {
+  if (!overlayElement || !currentAudioBuffer) return;
+  
+  let currentTime = 0;
+  if (isPlaying && !isPaused) {
+    currentTime = audioContext.currentTime - playbackStartTime;
+  } else if (isPaused) {
+    currentTime = pausedAt;
+  } else if (!isPlaying && !isPaused) {
+    // When playback is complete, show full duration
+    currentTime = totalDuration;
+  }
+  
+  // Ensure current time doesn't exceed total duration
+  currentTime = Math.min(currentTime, totalDuration);
+  
+  const timeDisplay = overlayElement.querySelector('.tts-time-display');
+  if (timeDisplay) {
+    timeDisplay.textContent = `${formatTime(currentTime)} of ${formatTime(totalDuration)}`;
+  }
+}
+
+// Start time update interval
+function startTimeUpdates() {
+  if (updateTimeInterval) {
+    clearInterval(updateTimeInterval);
+  }
+  updateTimeInterval = setInterval(updateTimeDisplay, 100); // Update every 100ms
+}
+
+// Stop time update interval
+function stopTimeUpdates() {
+  if (updateTimeInterval) {
+    clearInterval(updateTimeInterval);
+    updateTimeInterval = null;
+  }
+}
+
 // Toggle play/pause
 function togglePlayPause() {
   console.log('[TTS-Content] Toggle play/pause, current state - playing:', isPlaying, 'paused:', isPaused);
@@ -106,6 +159,7 @@ function togglePlayPause() {
     isPaused = true;
     updatePlayPauseButton(false);
     updateStatus('Paused');
+    stopTimeUpdates();
   } else if (isPaused) {
     // Currently paused - resume it
     console.log('[TTS-Content] Resuming audio');
@@ -114,6 +168,7 @@ function togglePlayPause() {
     isPaused = false;
     updatePlayPauseButton(true);
     updateStatus('Playing...');
+    startTimeUpdates();
   } else if (!isPlaying && audioQueue.length > 0) {
     // Playback completed but we have audio chunks - replay from beginning
     console.log('[TTS-Content] Replaying audio from beginning');
@@ -132,6 +187,7 @@ function rewindAudio() {
 
   // Remember if we were paused before rewinding
   const wasPaused = isPaused;
+  const wasPlaybackComplete = !isPlaying && !isPaused;
 
   // Calculate current playback position
   let currentTime = 0;
@@ -139,11 +195,21 @@ function rewindAudio() {
     currentTime = audioContext.currentTime - playbackStartTime;
   } else if (isPaused) {
     currentTime = pausedAt;
+  } else if (wasPlaybackComplete) {
+    // If playback is complete, start from 5 seconds before the end
+    currentTime = totalDuration;
   }
   
   // Rewind by 5 seconds, but don't go below 0
-  const newTime = Math.max(0, currentTime - 5);
-  console.log('[TTS-Content] Rewinding from', currentTime.toFixed(2), 'to', newTime.toFixed(2), 'seconds');
+  let newTime;
+  if (wasPlaybackComplete) {
+    // When playback is complete, set to 5 seconds from end (but not past beginning)
+    newTime = Math.max(0, totalDuration - 5);
+    console.log('[TTS-Content] Playback was complete, setting position to 5s from end:', newTime.toFixed(2), 'seconds');
+  } else {
+    newTime = Math.max(0, currentTime - 5);
+    console.log('[TTS-Content] Rewinding from', currentTime.toFixed(2), 'to', newTime.toFixed(2), 'seconds');
+  }
   
   // Stop current playback
   if (audioSource) {
@@ -166,15 +232,20 @@ function rewindAudio() {
   // Update timing variables
   playbackStartTime = audioContext.currentTime - newTime;
   
-  if (wasPaused) {
-    // If we were paused, pause the audio context immediately and update state
+  if (wasPaused || wasPlaybackComplete) {
+    // If we were paused or playback was complete, set to paused state
     pausedAt = newTime;
     audioContext.suspend();
     isPlaying = true;
     isPaused = true;
     updatePlayPauseButton(false);
     updateStatus('Paused');
-    console.log('[TTS-Content] Rewind completed, staying paused at', newTime.toFixed(2), 'seconds');
+    updateTimeDisplay();
+    if (wasPlaybackComplete) {
+      console.log('[TTS-Content] Rewind from completed playback, now paused at', newTime.toFixed(2), 'seconds');
+    } else {
+      console.log('[TTS-Content] Rewind completed, staying paused at', newTime.toFixed(2), 'seconds');
+    }
   } else {
     // If we were playing, continue playing
     pausedAt = 0;
@@ -182,6 +253,7 @@ function rewindAudio() {
     isPaused = false;
     updatePlayPauseButton(true);
     updateStatus('Playing...');
+    startTimeUpdates();
     console.log('[TTS-Content] Rewind completed, continuing playback');
   }
   
@@ -225,12 +297,14 @@ function stopPlayback() {
     console.log('[TTS-Content] Audio context closed');
   }
   
+  stopTimeUpdates();
   audioQueue = [];
   currentAudioBuffer = null;
   isPlaying = false;
   isPaused = false;
   playbackStartTime = 0;
   pausedAt = 0;
+  totalDuration = 0;
   updatePlayPauseButton(false);
   
   // Notify background script
@@ -310,8 +384,9 @@ async function startPlayback() {
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     console.log('[TTS-Content] Audio decoded successfully, duration:', audioBuffer.duration, 'seconds');
     
-    // Store audio buffer for rewind functionality
+    // Store audio buffer and duration for rewind and time display
     currentAudioBuffer = audioBuffer;
+    totalDuration = audioBuffer.duration;
     
     // Create and play audio source
     console.log('[TTS-Content] Creating audio source and starting playback');
@@ -320,14 +395,17 @@ async function startPlayback() {
     audioSource.connect(audioContext.destination);
     audioSource.start();
     playbackStartTime = audioContext.currentTime;
+    startTimeUpdates();
     console.log('[TTS-Content] Audio playback started');
     
     // Handle playback end
     audioSource.onended = () => {
       console.log('[TTS-Content] Audio playback ended');
+      stopTimeUpdates();
       isPlaying = false;
       updatePlayPauseButton(false);
       updateStatus('Playback complete');
+      updateTimeDisplay(); // Final time update
     };
     
   } catch (error) {

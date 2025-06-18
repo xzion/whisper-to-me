@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## User commands
+- When creating git commits, do not include the co-authored by Claude comment
+
 ## Project Overview
 
 This is a Chrome Text-to-Speech (TTS) extension that uses OpenAI's TTS API to convert selected text to speech. Users can select text on any webpage, right-click, and choose "Whisper to me" to hear it read aloud with natural-sounding voices.

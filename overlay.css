@@ -96,19 +96,16 @@
   fill: #333;
 }
 
-.tts-overlay-progress {
-  height: 4px;
-  background: #f0f0f0;
-  border-radius: 2px;
-  overflow: hidden;
+.tts-overlay-time {
   margin-bottom: 8px;
+  text-align: center;
 }
 
-.tts-progress-bar {
-  height: 100%;
-  background: #2196F3;
-  width: 0%;
-  transition: width 0.3s ease;
+.tts-time-display {
+  font-size: 14px;
+  color: #555;
+  font-weight: 500;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Consolas', monospace;
 }
 
 .tts-overlay-status {
