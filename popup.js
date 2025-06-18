@@ -14,7 +14,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load current settings
   async function loadSettings() {
+    console.log('[TTS-Popup] Loading settings');
     const settings = await SecureStorage.getSettings();
+    console.log('[TTS-Popup] Settings loaded:', settings);
     elements.voiceSelect.value = settings.voice;
     elements.speedSlider.value = settings.speed;
     elements.speedValue.textContent = `${settings.speed}x`;
@@ -23,7 +25,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Check API key status
   async function checkApiStatus() {
+    console.log('[TTS-Popup] Checking API key status');
     const hasKey = await SecureStorage.hasApiKey();
+    console.log('[TTS-Popup] API key exists:', hasKey);
     
     if (hasKey) {
       elements.statusIndicator.className = 'status-indicator active';
@@ -36,21 +40,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Save settings when changed
   elements.voiceSelect.addEventListener('change', async () => {
+    console.log('[TTS-Popup] Voice changed to:', elements.voiceSelect.value);
     await SecureStorage.saveSettings({ voice: elements.voiceSelect.value });
   });
 
   elements.speedSlider.addEventListener('input', async () => {
     const speed = parseFloat(elements.speedSlider.value);
+    console.log('[TTS-Popup] Speed changed to:', speed);
     elements.speedValue.textContent = `${speed}x`;
     await SecureStorage.saveSettings({ speed });
   });
 
   elements.modelSelect.addEventListener('change', async () => {
+    console.log('[TTS-Popup] Model changed to:', elements.modelSelect.value);
     await SecureStorage.saveSettings({ model: elements.modelSelect.value });
   });
 
   // Open options page
   elements.optionsBtn.addEventListener('click', () => {
+    console.log('[TTS-Popup] Opening options page');
     chrome.runtime.openOptionsPage();
   });
 
@@ -60,7 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Listen for storage changes
   chrome.storage.onChanged.addListener(async (changes, area) => {
+    console.log('[TTS-Popup] Storage changed:', changes, 'area:', area);
     if (area === 'sync' && changes.openai_api_key) {
+      console.log('[TTS-Popup] API key changed, rechecking status');
       await checkApiStatus();
     }
   });

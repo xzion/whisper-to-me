@@ -19,8 +19,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load current settings
   async function loadSettings() {
+    console.log('[TTS-Options] Loading settings');
     const apiKey = await SecureStorage.getApiKey();
     const settings = await SecureStorage.getSettings();
+    console.log('[TTS-Options] Settings loaded:', { hasApiKey: !!apiKey, settings });
 
     if (apiKey) {
       elements.apiKey.value = apiKey;
@@ -34,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Show toast message
   function showToast(message, type = 'success') {
+    console.log('[TTS-Options] Showing toast:', message, 'type:', type);
     elements.toast.innerHTML = `
       <span class="toast-message">${message}</span>
       ${type === 'error' ? '<button class="toast-dismiss">✕</button>' : ''}
@@ -57,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Toggle API key visibility
   elements.toggleVisibility.addEventListener('click', () => {
     const type = elements.apiKey.type === 'password' ? 'text' : 'password';
+    console.log('[TTS-Options] Toggling API key visibility to:', type);
     elements.apiKey.type = type;
     elements.toggleVisibility.textContent = type === 'password' ? '👁️' : '🙈';
   });
@@ -69,8 +73,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Preview voice
   elements.previewBtn.addEventListener('click', async () => {
+    console.log('[TTS-Options] Preview button clicked, currently playing:', isPreviewPlaying);
     if (isPreviewPlaying) {
       // Stop preview
+      console.log('[TTS-Options] Stopping preview');
       chrome.runtime.sendMessage({ action: 'stopTTS' });
       elements.previewBtn.textContent = 'Preview Voice';
       isPreviewPlaying = false;
@@ -78,6 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const apiKey = elements.apiKey.value.trim();
+    console.log('[TTS-Options] API key present:', !!apiKey);
     if (!apiKey) {
       showToast('Please enter your API key first', 'error');
       return;
@@ -88,6 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       speed: parseFloat(elements.speedSlider.value),
       model: elements.modelSelect.value
     };
+    console.log('[TTS-Options] Starting preview with settings:', settings);
 
     elements.previewBtn.textContent = 'Stop Preview';
     elements.previewBtn.disabled = true;
@@ -98,6 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const audio = new Audio();
       
       // Make API call directly from options page
+      console.log('[TTS-Options] Making API request for preview');
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -113,11 +122,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
 
       if (!response.ok) {
+        console.log('[TTS-Options] Preview API request failed with status:', response.status);
         const error = await response.json();
         throw new Error(error.error?.message || 'API request failed');
       }
 
       // Create blob from response
+      console.log('[TTS-Options] Preview API request successful, creating audio');
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
       
@@ -125,21 +136,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       audio.playbackRate = 1.0; // Speed is already applied by API
       
       audio.onended = () => {
+        console.log('[TTS-Options] Preview playback ended');
         URL.revokeObjectURL(audioUrl);
         elements.previewBtn.textContent = 'Preview Voice';
         isPreviewPlaying = false;
       };
 
       audio.onerror = () => {
+        console.log('[TTS-Options] Preview audio error');
         URL.revokeObjectURL(audioUrl);
         showToast('Error playing audio', 'error');
         elements.previewBtn.textContent = 'Preview Voice';
         isPreviewPlaying = false;
       };
 
+      console.log('[TTS-Options] Starting preview audio playback');
       await audio.play();
       
     } catch (error) {
+      console.log('[TTS-Options] Preview error:', error);
       showToast(error.message, 'error');
       elements.previewBtn.textContent = 'Preview Voice';
       isPreviewPlaying = false;
@@ -150,6 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Save settings
   elements.saveBtn.addEventListener('click', async () => {
+    console.log('[TTS-Options] Save button clicked');
     const apiKey = elements.apiKey.value.trim();
     
     if (!apiKey) {
@@ -158,24 +174,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Validate API key format
+    console.log('[TTS-Options] Validating API key format');
     if (!apiKey.startsWith('sk-') || apiKey.length < 20) {
+      console.log('[TTS-Options] Invalid API key format');
       showToast('Invalid API key format', 'error');
       return;
     }
 
     try {
+      console.log('[TTS-Options] Saving API key and settings');
       // Save API key
       await SecureStorage.saveApiKey(apiKey);
 
       // Save other settings
-      await SecureStorage.saveSettings({
+      const settings = {
         voice: elements.voiceSelect.value,
         speed: parseFloat(elements.speedSlider.value),
         model: elements.modelSelect.value
-      });
+      };
+      console.log('[TTS-Options] Saving settings:', settings);
+      await SecureStorage.saveSettings(settings);
 
       showToast('Settings saved successfully!');
     } catch (error) {
+      console.log('[TTS-Options] Save error:', error);
       showToast('Error saving settings', 'error');
       console.error('Save error:', error);
     }
@@ -183,6 +205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Reset to defaults
   elements.resetBtn.addEventListener('click', async () => {
+    console.log('[TTS-Options] Reset button clicked');
     if (confirm('Are you sure you want to reset all settings to defaults? This will not clear your API key.')) {
       elements.voiceSelect.value = 'alloy';
       elements.speedSlider.value = '1';
@@ -190,6 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       elements.modelSelect.value = 'tts-1';
       elements.previewText.value = 'Welcome to Whisper to Me. This extension uses OpenAI\'s advanced text-to-speech technology to read any selected text aloud with natural, expressive voices.';
       
+      console.log('[TTS-Options] Resetting settings to defaults');
       await SecureStorage.saveSettings({
         voice: 'alloy',
         speed: 1.0,
