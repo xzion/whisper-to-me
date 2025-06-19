@@ -15,6 +15,13 @@ let playbackStartTime = 0;
 let pausedAt = 0;
 let totalDuration = 0;
 let updateTimeInterval = null;
+let hasStartedEarlyPlayback = false;
+let isStreamingComplete = false;
+let continuationAudioSource = null;
+let hasStartedContinuation = false;
+let lastProcessedChunkIndex = 0; // Track which chunks have been used for playback
+let currentPlaybackOffset = 0; // Track the actual playback position in seconds
+const PLAYBACK_START_THRESHOLD = 4; // Start playback after 4 chunks
 
 // Create and inject overlay HTML
 function createOverlay() {
@@ -45,7 +52,7 @@ function createOverlay() {
           </button>
         </div>
         <div class="tts-overlay-time">
-          <span class="tts-time-display">0s of 0s</span>
+          <span class="tts-time-display">0s of ...</span>
         </div>
       </div>
       <div class="tts-overlay-status">Preparing audio...</div>
@@ -68,14 +75,33 @@ function createOverlay() {
 function showOverlay(text) {
   console.log('[TTS-Content] Showing overlay for text length:', text.length);
   
-  // Clear any previous audio state
+  // Clear any previous audio state completely
   stopPlayback();
+  
+  // Ensure all state is properly reset for new session
   audioQueue = [];
+  currentAudioBuffer = null;
+  isPlaying = false;
+  isPaused = false;
+  playbackStartTime = 0;
+  pausedAt = 0;
+  totalDuration = 0;
+  hasStartedEarlyPlayback = false;
+  isStreamingComplete = false;
+  hasStartedContinuation = false;
+  lastProcessedChunkIndex = 0;
+  currentPlaybackOffset = 0;
+  
+  // Reset UI state for new session
+  updatePlayPauseButton(false);
+  updateRewindButton(false); // Start disabled since we'll be streaming
+  stopTimeUpdates();
   
   createOverlay();
   overlayElement.classList.add('visible');
   
   updateStatus('Preparing audio...');
+  updateTimeDisplay(); // Reset time display to "0s of ..."
 }
 
 // Hide overlay
@@ -110,7 +136,16 @@ function formatTime(seconds) {
 
 // Update time display
 function updateTimeDisplay() {
-  if (!overlayElement || !currentAudioBuffer) return;
+  if (!overlayElement) return;
+  
+  const timeDisplay = overlayElement.querySelector('.tts-time-display');
+  if (!timeDisplay) return;
+  
+  // If no audio buffer yet (new session), show initial state
+  if (!currentAudioBuffer) {
+    timeDisplay.textContent = '0s of ...';
+    return;
+  }
   
   let currentTime = 0;
   if (isPlaying && !isPaused) {
@@ -125,10 +160,9 @@ function updateTimeDisplay() {
   // Ensure current time doesn't exceed total duration
   currentTime = Math.min(currentTime, totalDuration);
   
-  const timeDisplay = overlayElement.querySelector('.tts-time-display');
-  if (timeDisplay) {
-    timeDisplay.textContent = `${formatTime(currentTime)} of ${formatTime(totalDuration)}`;
-  }
+  // Show "..." while streaming, actual duration once complete
+  const durationText = isStreamingComplete ? formatTime(totalDuration) : '...';
+  timeDisplay.textContent = `${formatTime(currentTime)} of ${durationText}`;
 }
 
 // Start time update interval
@@ -282,6 +316,18 @@ function updatePlayPauseButton(playing) {
   }
 }
 
+// Update rewind button enabled/disabled state
+function updateRewindButton(enabled) {
+  if (!overlayElement) return;
+  
+  const rewindBtn = overlayElement.querySelector('.tts-rewind');
+  if (rewindBtn) {
+    rewindBtn.disabled = !enabled;
+    rewindBtn.style.opacity = enabled ? '1' : '0.5';
+    rewindBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  }
+}
+
 // Stop playback
 function stopPlayback() {
   console.log('[TTS-Content] Stopping playback');
@@ -289,6 +335,12 @@ function stopPlayback() {
     audioSource.stop();
     audioSource = null;
     console.log('[TTS-Content] Audio source stopped');
+  }
+  
+  if (continuationAudioSource) {
+    continuationAudioSource.stop();
+    continuationAudioSource = null;
+    console.log('[TTS-Content] Continuation audio source stopped');
   }
   
   if (audioContext) {
@@ -305,7 +357,13 @@ function stopPlayback() {
   playbackStartTime = 0;
   pausedAt = 0;
   totalDuration = 0;
+  hasStartedEarlyPlayback = false;
+  isStreamingComplete = false;
+  hasStartedContinuation = false;
+  lastProcessedChunkIndex = 0;
+  currentPlaybackOffset = 0;
   updatePlayPauseButton(false);
+  updateRewindButton(true); // Reset rewind button to enabled state
   
   // Notify background script
   console.log('[TTS-Content] Notifying background script to stop TTS');
@@ -333,22 +391,276 @@ async function processAudioChunk(chunk, isLast) {
     console.log('[TTS-Content] Added chunk to queue, total chunks:', audioQueue.length);
   }
 
-  // Only start playback when we have received the last chunk
+  // Start early playback when we have enough chunks
+  if (!hasStartedEarlyPlayback && audioQueue.length >= PLAYBACK_START_THRESHOLD && !isPlaying) {
+    console.log('[TTS-Content] Starting early playback with', audioQueue.length, 'chunks buffered');
+    hasStartedEarlyPlayback = true;
+    startEarlyPlayback();
+  }
+  
+  // Handle continuation when streaming is complete
   if (isLast) {
-    if (!isPlaying) {
-      console.log('[TTS-Content] Starting playback with', audioQueue.length, 'chunks buffered');
+    isStreamingComplete = true;
+    console.log('[TTS-Content] Last chunk received, total chunks:', audioQueue.length);
+    
+    if (hasStartedEarlyPlayback && isPlaying) {
+      // Update the total duration now that we have all chunks
+      await updateTotalDurationFromCompleteBuffer();
+    } else if (!hasStartedEarlyPlayback) {
+      // Fallback: start normal playback if early playback never triggered
+      console.log('[TTS-Content] Starting fallback playback with', audioQueue.length, 'chunks buffered');
       startPlayback();
     }
   }
+}
 
-  if (isLast) {
-    console.log('[TTS-Content] Last chunk received, total chunks:', audioQueue.length);
+// Start early playback with initial chunks
+async function startEarlyPlayback() {
+  console.log('[TTS-Content] Starting early playback with', audioQueue.length, 'chunks');
+  
+  // Create new audio context if needed
+  if (!audioContext || audioContext.state === 'closed') {
+    initAudioContext();
+  }
+
+  isPlaying = true;
+  isPaused = false;
+  pausedAt = 0;
+  updatePlayPauseButton(true);
+  updateRewindButton(false); // Disable rewind during streaming/continuation
+  updateStatus('Playing...');
+
+  // Combine available chunks into initial buffer
+  const initialChunks = audioQueue.slice(0, PLAYBACK_START_THRESHOLD);
+  const totalLength = initialChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  console.log('[TTS-Content] Combining', initialChunks.length, 'initial chunks into buffer of', totalLength, 'bytes');
+  
+  const combinedBuffer = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  for (const chunk of initialChunks) {
+    combinedBuffer.set(chunk, offset);
+    offset += chunk.length;
+  }
+  console.log('[TTS-Content] Initial audio buffer combined successfully');
+
+  try {
+    console.log('[TTS-Content] Decoding initial audio data');
+    const arrayBuffer = combinedBuffer.buffer;
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    console.log('[TTS-Content] Initial audio decoded successfully, duration:', audioBuffer.duration, 'seconds');
+    
+    // Store audio buffer (will be updated when streaming completes)
+    currentAudioBuffer = audioBuffer;
+    totalDuration = audioBuffer.duration; // Temporary duration, will be updated
+    lastProcessedChunkIndex = PLAYBACK_START_THRESHOLD; // Track initial chunks processed
+    currentPlaybackOffset = audioBuffer.duration; // Set initial offset for continuations
+    
+    // Create and play audio source
+    console.log('[TTS-Content] Creating audio source and starting early playback');
+    audioSource = audioContext.createBufferSource();
+    audioSource.buffer = audioBuffer;
+    audioSource.connect(audioContext.destination);
+    audioSource.start();
+    playbackStartTime = audioContext.currentTime;
+    startTimeUpdates();
+    console.log('[TTS-Content] Early audio playback started');
+    
+    // Handle early playback end - prepare for continuation
+    audioSource.onended = () => {
+      console.log('[TTS-Content] Early playback ended, preparing continuation');
+      // Check if we have more chunks to process beyond what we've already used
+      if (audioQueue.length > lastProcessedChunkIndex) {
+        // Need to continue with remaining chunks
+        console.log('[TTS-Content] Continuing playback with remaining chunks, processed:', lastProcessedChunkIndex, 'total:', audioQueue.length);
+        continuePlayback();
+      } else {
+        // All chunks processed, normal ending
+        console.log('[TTS-Content] All chunks processed, playback complete');
+        stopTimeUpdates();
+        isPlaying = false;
+        updatePlayPauseButton(false);
+        updateStatus('Playback complete');
+        updateTimeDisplay();
+      }
+    };
+    
+    // Fallback: if we have more chunks available immediately, prepare continuation
+    if (audioQueue.length > PLAYBACK_START_THRESHOLD) {
+      console.log('[TTS-Content] Additional chunks already available, preparing immediate continuation');
+      setTimeout(() => {
+        if (audioQueue.length > PLAYBACK_START_THRESHOLD && isPlaying && !isStreamingComplete) {
+          console.log('[TTS-Content] Fallback: scheduling continuation');
+          // Schedule continuation slightly before the current buffer ends
+          const bufferEndTime = (audioBuffer.duration * 1000) - 50; // 50ms before end
+          setTimeout(() => {
+            if (isPlaying && !isStreamingComplete) {
+              console.log('[TTS-Content] Fallback continuation triggered');
+              continuePlayback();
+            }
+          }, bufferEndTime);
+        }
+      }, 100);
+    }
+    
+  } catch (error) {
+    console.error('[TTS-Content] Early playback decode error:', error);
+    updateStatus('Error playing audio');
+    // Fallback to waiting for all chunks
+    hasStartedEarlyPlayback = false;
   }
 }
 
-// Start audio playback
+// Continue playback with remaining chunks
+async function continuePlayback() {
+  // Prevent multiple continuation attempts
+  if (hasStartedContinuation) {
+    console.log('[TTS-Content] Continuation already started, ignoring duplicate call');
+    return;
+  }
+  
+  if (audioQueue.length <= lastProcessedChunkIndex) {
+    console.log('[TTS-Content] No new chunks to continue playback, processed:', lastProcessedChunkIndex, 'total:', audioQueue.length);
+    return;
+  }
+
+  hasStartedContinuation = true;
+  
+  // Determine which chunks to use for this continuation
+  const startChunkIndex = lastProcessedChunkIndex;
+  const endChunkIndex = isStreamingComplete ? audioQueue.length : Math.min(audioQueue.length, startChunkIndex + PLAYBACK_START_THRESHOLD * 4); // Use larger batches for continuation
+  const chunksToProcess = audioQueue.slice(startChunkIndex, endChunkIndex);
+  
+  console.log('[TTS-Content] Continuing playback from chunk', startChunkIndex, 'to', endChunkIndex - 1, '(', chunksToProcess.length, 'chunks)');
+  
+  // Stop the current audio source to prevent overlap
+  if (audioSource) {
+    audioSource.onended = null; // Remove the event handler
+    audioSource.stop();
+    audioSource = null;
+  }
+  
+  // Create buffer with available chunks
+  const totalLength = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
+  console.log('[TTS-Content] Creating continuation buffer with', chunksToProcess.length, 'chunks, total size:', totalLength, 'bytes');
+  
+  const combinedBuffer = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  for (const chunk of chunksToProcess) {
+    combinedBuffer.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  try {
+    // Create buffer with all chunks up to current point to get proper offset
+    const allChunksToHere = audioQueue.slice(0, endChunkIndex);
+    const allLength = allChunksToHere.reduce((sum, chunk) => sum + chunk.length, 0);
+    const allBuffer = new Uint8Array(allLength);
+    let allOffset = 0;
+    
+    for (const chunk of allChunksToHere) {
+      allBuffer.set(chunk, allOffset);
+      allOffset += chunk.length;
+    }
+    
+    const allArrayBuffer = allBuffer.buffer;
+    const completeAudioBuffer = await audioContext.decodeAudioData(allArrayBuffer);
+    console.log('[TTS-Content] Complete audio decoded, total duration so far:', completeAudioBuffer.duration, 'seconds');
+    
+    // Calculate where we should start playing from
+    const startOffset = currentPlaybackOffset;
+    
+    console.log('[TTS-Content] Starting continuation from offset:', startOffset.toFixed(3), 'seconds');
+    
+    // Create new audio source with complete buffer but start from offset
+    audioSource = audioContext.createBufferSource();
+    audioSource.buffer = completeAudioBuffer;
+    audioSource.connect(audioContext.destination);
+    audioSource.start(0, startOffset); // Start from where previous buffer ended
+    
+    // Update playback timing to account for the offset
+    playbackStartTime = audioContext.currentTime - startOffset;
+    
+    // Update stored references
+    currentAudioBuffer = completeAudioBuffer;
+    totalDuration = completeAudioBuffer.duration;
+    lastProcessedChunkIndex = endChunkIndex;
+    
+    // Update current playback offset for next continuation
+    // Set to the complete buffer duration as it represents where we'll be when this continuation finishes
+    if (isStreamingComplete && lastProcessedChunkIndex >= audioQueue.length) {
+      // If this is the final continuation, don't update offset as playback will complete
+      console.log('[TTS-Content] Final continuation - keeping currentPlaybackOffset at:', currentPlaybackOffset.toFixed(3));
+      // Enable rewind button now that we have the complete audio buffer
+      updateRewindButton(true);
+    } else {
+      currentPlaybackOffset = completeAudioBuffer.duration;
+    }
+    
+    console.log('[TTS-Content] Continuation started from', startOffset.toFixed(3), 's, total duration:', totalDuration.toFixed(3), 's, processed chunks:', lastProcessedChunkIndex);
+    
+    // Handle end of continuation buffer
+    audioSource.onended = () => {
+      console.log('[TTS-Content] Continuation buffer ended');
+      
+      if (isStreamingComplete && lastProcessedChunkIndex >= audioQueue.length) {
+        // All chunks processed and streaming complete
+        console.log('[TTS-Content] All audio playback complete');
+        stopTimeUpdates();
+        isPlaying = false;
+        updatePlayPauseButton(false);
+        updateRewindButton(true); // Enable rewind once final continuation completes
+        updateStatus('Playback complete');
+        updateTimeDisplay();
+      } else {
+        // More chunks available or streaming still in progress
+        console.log('[TTS-Content] Preparing next continuation, streaming complete:', isStreamingComplete, 'chunks processed:', lastProcessedChunkIndex, 'total chunks:', audioQueue.length);
+        hasStartedContinuation = false; // Reset for next continuation
+        continuePlayback();
+      }
+    };
+    
+  } catch (error) {
+    console.error('[TTS-Content] Continuation decode error:', error);
+    updateStatus('Error continuing audio');
+    hasStartedContinuation = false; // Reset on error
+  }
+}
+
+// Update total duration when all chunks are received
+async function updateTotalDurationFromCompleteBuffer() {
+  if (audioQueue.length === 0) return;
+  
+  console.log('[TTS-Content] Updating total duration from complete buffer');
+  
+  // Combine all chunks to get accurate total duration
+  const totalLength = audioQueue.reduce((sum, chunk) => sum + chunk.length, 0);
+  const combinedBuffer = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  for (const chunk of audioQueue) {
+    combinedBuffer.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  try {
+    const arrayBuffer = combinedBuffer.buffer;
+    const completeAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    // Update stored values
+    currentAudioBuffer = completeAudioBuffer;
+    totalDuration = completeAudioBuffer.duration;
+    
+    console.log('[TTS-Content] Updated total duration to:', totalDuration, 'seconds');
+  } catch (error) {
+    console.error('[TTS-Content] Error updating total duration:', error);
+  }
+}
+
+// Legacy startPlayback function for fallback and replay scenarios
 async function startPlayback() {
-  console.log('[TTS-Content] Starting audio playback with', audioQueue.length, 'chunks');
+  console.log('[TTS-Content] Starting standard playback with', audioQueue.length, 'chunks');
   if (audioQueue.length === 0) {
     console.log('[TTS-Content] No audio chunks to play');
     return;
@@ -363,6 +675,7 @@ async function startPlayback() {
   isPaused = false;
   pausedAt = 0;
   updatePlayPauseButton(true);
+  updateRewindButton(true); // Enable rewind for legacy playback (replays)
   updateStatus('Playing...');
 
   // Combine all chunks into a single buffer
