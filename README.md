@@ -1,4 +1,4 @@
-# Chrome TTS Extension
+# Whisper To Me
 
 A Chrome extension that converts selected text to natural-sounding speech using OpenAI's Text-to-Speech API. Simply select text on any webpage, right-click, and choose "Whisper to me" to hear it read aloud.
 
@@ -11,7 +11,7 @@ A Chrome extension that converts selected text to natural-sounding speech using 
   - `tts-1` for faster generation
   - `tts-1-hd` for higher quality audio
 - **Audio Controls**: Play, pause, stop, and download functionality
-- **Secure API Key Storage**: Your OpenAI API key is encrypted and stored locally
+- **Secure API Key Storage**: Your OpenAI API key is enc1rypted and stored locally
 - **Streaming Playback**: Audio begins playing while still generating for faster response
 
 ## Installation
@@ -24,14 +24,14 @@ A Chrome extension that converts selected text to natural-sounding speech using 
 
 1. **Download or Clone**
    ```bash
-   git clone https://github.com/yourusername/chrometts.git
+   git clone https://github.com/yourusername/whisper-to-me.git
    ```
 
 2. **Load in Chrome**
    - Open Chrome and navigate to `chrome://extensions/`
    - Enable "Developer mode" (toggle in top right)
    - Click "Load unpacked"
-   - Select the `chrometts` folder
+   - Select the `whisper-to-me` folder
 
 3. **Configure API Key**
    - Click the extension icon in Chrome toolbar
@@ -105,7 +105,7 @@ OpenAI TTS API pricing (as of 2024):
 
 ### File Structure
 ```
-chrometts/
+whisper-to-me/
 ├── manifest.json          # Extension manifest
 ├── popup.html/js          # Quick settings popup
 ├── options.html/js        # Full settings page

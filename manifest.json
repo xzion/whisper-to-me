@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Whisper to Me - OpenAI TTS",
+  "name": "Whisper To Me",
   "version": "1.0.0",
   "description": "Convert selected text to speech using OpenAI's TTS API",
   "permissions": [
