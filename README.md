@@ -24,7 +24,7 @@ A Chrome extension that converts selected text to natural-sounding speech using 
 
 1. **Download or Clone**
    ```bash
-   git clone https://github.com/yourusername/whisper-to-me.git
+   git clone https://github.com/xzion/whisper-to-me.git
    ```
 
 2. **Load in Chrome**
