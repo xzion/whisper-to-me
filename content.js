@@ -52,7 +52,10 @@ function createOverlay() {
           </button>
         </div>
         <div class="tts-overlay-time">
-          <span class="tts-time-display">0s of ...</span>
+          <div class="tts-time-display">
+            <span class="tts-time-text">0s of ...</span>
+          </div>
+          <button class="tts-download-btn" aria-label="Download audio">Download</button>
         </div>
       </div>
       <div class="tts-overlay-status">Preparing audio...</div>
@@ -65,10 +68,12 @@ function createOverlay() {
   const closeBtn = overlayElement.querySelector('.tts-overlay-close');
   const playPauseBtn = overlayElement.querySelector('.tts-play-pause');
   const rewindBtn = overlayElement.querySelector('.tts-rewind');
+  const downloadBtn = overlayElement.querySelector('.tts-download-btn');
 
   closeBtn.addEventListener('click', hideOverlay);
   playPauseBtn.addEventListener('click', togglePlayPause);
   rewindBtn.addEventListener('click', rewindAudio);
+  downloadBtn.addEventListener('click', downloadAudio);
 }
 
 // Show overlay with text
@@ -95,6 +100,7 @@ function showOverlay(text) {
   // Reset UI state for new session
   updatePlayPauseButton(false);
   updateRewindButton(false); // Start disabled since we'll be streaming
+  updateDownloadButton(false); // Start disabled until streaming is complete
   stopTimeUpdates();
   
   createOverlay();
@@ -138,12 +144,12 @@ function formatTime(seconds) {
 function updateTimeDisplay() {
   if (!overlayElement) return;
   
-  const timeDisplay = overlayElement.querySelector('.tts-time-display');
-  if (!timeDisplay) return;
+  const timeText = overlayElement.querySelector('.tts-time-text');
+  if (!timeText) return;
   
   // If no audio buffer yet (new session), show initial state
   if (!currentAudioBuffer) {
-    timeDisplay.textContent = '0s of ...';
+    timeText.textContent = '0s of ...';
     return;
   }
   
@@ -162,7 +168,7 @@ function updateTimeDisplay() {
   
   // Show "..." while streaming, actual duration once complete
   const durationText = isStreamingComplete ? formatTime(totalDuration) : '...';
-  timeDisplay.textContent = `${formatTime(currentTime)} of ${durationText}`;
+  timeText.textContent = `${formatTime(currentTime)} of ${durationText}`;
 }
 
 // Start time update interval
@@ -328,6 +334,91 @@ function updateRewindButton(enabled) {
   }
 }
 
+// Update download button enabled/disabled state
+function updateDownloadButton(enabled) {
+  if (!overlayElement) return;
+  
+  const downloadBtn = overlayElement.querySelector('.tts-download-btn');
+  if (downloadBtn) {
+    downloadBtn.disabled = !enabled;
+    downloadBtn.style.opacity = enabled ? '1' : '0.5';
+    downloadBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  }
+}
+
+// Download audio as MP3 file
+async function downloadAudio() {
+  console.log('[TTS-Content] Download button clicked');
+  
+  if (!isStreamingComplete || audioQueue.length === 0) {
+    console.log('[TTS-Content] Cannot download - streaming not complete or no audio data');
+    return;
+  }
+  
+  try {
+    console.log('[TTS-Content] Creating MP3 blob from audio chunks');
+    
+    // Combine all audio chunks into a single buffer
+    const totalLength = audioQueue.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combinedBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    
+    for (const chunk of audioQueue) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    // Create blob from the MP3 data (chunks are already in MP3 format from OpenAI)
+    const blob = new Blob([combinedBuffer], { type: 'audio/mpeg' });
+    console.log('[TTS-Content] Created blob with size:', blob.size, 'bytes');
+    
+    // Create download link
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // Generate filename with timestamp
+    const now = new Date();
+    const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    a.download = `whisper-tts-${timestamp}.mp3`;
+    
+    // Trigger download
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Clean up blob URL
+    URL.revokeObjectURL(url);
+    
+    console.log('[TTS-Content] Audio download initiated:', a.download);
+    updateStatus('Audio saved successfully!');
+    
+    // Reset status after 2 seconds
+    setTimeout(() => {
+      if (isPlaying) {
+        updateStatus('Playing...');
+      } else if (isPaused) {
+        updateStatus('Paused');
+      } else {
+        updateStatus('Playback complete');
+      }
+    }, 2000);
+    
+  } catch (error) {
+    console.error('[TTS-Content] Download error:', error);
+    updateStatus('Error downloading audio');
+    setTimeout(() => {
+      if (isPlaying) {
+        updateStatus('Playing...');
+      } else if (isPaused) {
+        updateStatus('Paused');
+      } else {
+        updateStatus('Playback complete');
+      }
+    }, 3000);
+  }
+}
+
 // Stop playback
 function stopPlayback() {
   console.log('[TTS-Content] Stopping playback');
@@ -364,6 +455,7 @@ function stopPlayback() {
   currentPlaybackOffset = 0;
   updatePlayPauseButton(false);
   updateRewindButton(true); // Reset rewind button to enabled state
+  updateDownloadButton(false); // Reset download button to disabled state
   
   // Notify background script
   console.log('[TTS-Content] Notifying background script to stop TTS');
@@ -402,6 +494,9 @@ async function processAudioChunk(chunk, isLast) {
   if (isLast) {
     isStreamingComplete = true;
     console.log('[TTS-Content] Last chunk received, total chunks:', audioQueue.length);
+    
+    // Enable download button now that streaming is complete
+    updateDownloadButton(true);
     
     if (hasStartedEarlyPlayback && isPlaying) {
       // Update the total duration now that we have all chunks
