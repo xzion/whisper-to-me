@@ -189,6 +189,8 @@
 }
 
 .tts-overlay-status:has-text("Preparing audio..."),
+.tts-overlay-status:has-text("Buffering audio..."),
+.tts-overlay-status:has-text("Buffering..."),
 .tts-overlay-status:has-text("Playing...") {
   animation: pulse 1.5s ease-in-out infinite;
 }

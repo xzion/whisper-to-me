@@ -10,6 +10,216 @@ let updateTimeInterval = null;
 let isStreamingComplete = false;
 let currentPlaybackSpeed = 1.0; // Current playback speed
 
+// Progressive buffering system
+class BufferManager {
+  constructor() {
+    this.chunks = [];
+    this.chunkCount = 0;
+    this.appendedChunkCount = 0; // Track how many chunks have been appended to MediaSource
+    this.mediaSource = null;
+    this.sourceBuffer = null;
+    this.appendingChunk = false;
+    this.minBufferThreshold = 5; // Minimum chunks before starting playback
+    this.bufferReady = false;
+    this.mediaSourceReady = false;
+    this.setupInProgress = false;
+  }
+
+  reset() {
+    this.chunks = [];
+    this.chunkCount = 0;
+    this.appendedChunkCount = 0;
+    this.bufferReady = false;
+    this.mediaSourceReady = false;
+    this.appendingChunk = false;
+    
+    // Don't reset MediaSource if setup is in progress
+    if (this.setupInProgress) {
+      console.log('[BufferManager] Skipping MediaSource reset - setup in progress');
+      return;
+    }
+    
+    if (this.sourceBuffer) {
+      try {
+        if (this.mediaSource && this.mediaSource.readyState === 'open') {
+          this.mediaSource.removeSourceBuffer(this.sourceBuffer);
+        }
+      } catch (error) {
+        console.warn('[BufferManager] Error removing source buffer:', error);
+      }
+      this.sourceBuffer = null;
+    }
+    
+    if (this.mediaSource) {
+      try {
+        if (this.mediaSource.readyState === 'open') {
+          this.mediaSource.endOfStream();
+        }
+      } catch (error) {
+        console.warn('[BufferManager] Error ending stream:', error);
+      }
+    }
+    this.mediaSource = null;
+  }
+
+  // Create MediaSource immediately and set up audio element
+  setupMediaSource() {
+    if (!window.MediaSource || !MediaSource.isTypeSupported('audio/mpeg')) {
+      console.log('[BufferManager] MediaSource not supported');
+      return false;
+    }
+
+    this.setupInProgress = true;
+    console.log('[BufferManager] Creating MediaSource...');
+    this.mediaSource = new MediaSource();
+    const objectURL = URL.createObjectURL(this.mediaSource);
+    console.log('[BufferManager] MediaSource URL created:', objectURL);
+    console.log('[BufferManager] MediaSource readyState:', this.mediaSource.readyState);
+    
+    this.mediaSource.addEventListener('sourceopen', () => {
+      console.log('[BufferManager] MediaSource opened');
+      try {
+        // Check if MediaSource is still valid (not reset)
+        if (!this.mediaSource || this.mediaSource.readyState !== 'open') {
+          console.warn('[BufferManager] MediaSource no longer valid during sourceopen');
+          return;
+        }
+        
+        this.sourceBuffer = this.mediaSource.addSourceBuffer('audio/mpeg');
+        this.sourceBuffer.addEventListener('updateend', () => {
+          this.appendingChunk = false;
+          this.appendNextPendingChunk(); // Try to append next chunk
+        });
+        this.sourceBuffer.addEventListener('error', (e) => {
+          console.error('[BufferManager] SourceBuffer error:', e);
+          this.appendingChunk = false;
+          this.appendNextPendingChunk(); // Try to append next chunk even after error
+        });
+        this.mediaSourceReady = true;
+        this.setupInProgress = false; // Setup complete
+        console.log('[BufferManager] SourceBuffer ready for chunks');
+      } catch (error) {
+        console.error('[BufferManager] Error setting up source buffer:', error);
+        this.setupInProgress = false;
+      }
+    });
+
+    this.mediaSource.addEventListener('sourceclose', () => {
+      console.log('[BufferManager] MediaSource closed');
+      this.sourceBuffer = null;
+      this.mediaSourceReady = false;
+      this.setupInProgress = false;
+    });
+
+    this.mediaSource.addEventListener('error', (e) => {
+      console.error('[BufferManager] MediaSource error:', e);
+      this.sourceBuffer = null;
+      this.mediaSourceReady = false;
+      this.setupInProgress = false;
+    });
+
+    // Set audio element source after a small delay to ensure DOM is ready
+    setTimeout(() => {
+      if (audioElement && this.mediaSource) {
+        console.log('[BufferManager] Setting audio element source...');
+        console.log('[BufferManager] Audio element state - paused:', audioElement.paused, 'readyState:', audioElement.readyState);
+        audioElement.src = objectURL;
+        audioElement.playbackRate = currentPlaybackSpeed;
+        audioElement.preservesPitch = true;
+        console.log('[BufferManager] Audio element source set, MediaSource readyState:', this.mediaSource.readyState);
+        console.log('[BufferManager] Audio element playbackRate set to:', currentPlaybackSpeed);
+        
+        // Force load to trigger sourceopen
+        audioElement.load();
+        console.log('[BufferManager] Audio element load() called');
+      } else {
+        console.error('[BufferManager] Audio element or MediaSource not available!');
+        this.setupInProgress = false;
+      }
+    }, 50);
+
+    return true;
+  }
+
+  // Try to append next pending chunk to MediaSource
+  appendNextPendingChunk() {
+    if (!this.mediaSourceReady || !this.sourceBuffer || this.sourceBuffer.updating || this.appendingChunk) {
+      return; // Can't append right now
+    }
+    
+    // Check if there are pending chunks to append
+    if (this.appendedChunkCount < this.chunks.length) {
+      const chunkIndex = this.appendedChunkCount;
+      const chunk = this.chunks[chunkIndex];
+      
+      try {
+        this.appendingChunk = true;
+        this.sourceBuffer.appendBuffer(chunk);
+        this.appendedChunkCount++;
+        console.log('[BufferManager] Appended pending chunk', chunkIndex + 1, 'to MediaSource');
+      } catch (error) {
+        console.error('[BufferManager] Error appending pending chunk:', error);
+        this.appendingChunk = false;
+      }
+    }
+  }
+
+  // Add chunk and append to MediaSource immediately
+  addChunk(chunk) {
+    if (chunk.length === 0) return false;
+    
+    this.chunks.push(chunk);
+    this.chunkCount++;
+    
+    console.log('[BufferManager] Added chunk', this.chunkCount, ', size:', chunk.length);
+    
+    // Try to append this chunk to MediaSource if ready
+    this.appendNextPendingChunk();
+    
+    // Check if we have enough buffer to start playback
+    if (!this.bufferReady && this.chunkCount >= this.minBufferThreshold) {
+      this.bufferReady = true;
+      console.log('[BufferManager] Buffer threshold reached, ready for playback');
+      return true; // Signal that playback can start
+    }
+    
+    return false;
+  }
+
+  finalize() {
+    if (this.mediaSource && this.mediaSource.readyState === 'open') {
+      try {
+        if (!this.sourceBuffer || !this.sourceBuffer.updating) {
+          this.mediaSource.endOfStream();
+        } else {
+          this.sourceBuffer.addEventListener('updateend', () => {
+            if (this.mediaSource && this.mediaSource.readyState === 'open') {
+              this.mediaSource.endOfStream();
+            }
+          }, { once: true });
+        }
+      } catch (error) {
+        console.warn('[BufferManager] Error finalizing stream:', error);
+      }
+    }
+  }
+
+  createFallbackBlob() {
+    const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combinedBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    
+    for (const chunk of this.chunks) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    return new Blob([combinedBuffer], { type: 'audio/mpeg' });
+  }
+}
+
+let bufferManager = new BufferManager();
+
 // Create overlay immediately when script loads for testing
 createOverlay();
 
@@ -75,6 +285,7 @@ function createOverlay() {
   if (audioElement) {
     audioElement.preservesPitch = true;
     audioElement.playbackRate = currentPlaybackSpeed;
+    console.log('[TTS-Content] Audio element configured with playbackRate:', currentPlaybackSpeed);
   }
 
   // Add event listeners
@@ -106,6 +317,7 @@ async function showOverlay(text) {
   
   // Ensure all state is properly reset for new session
   audioQueue = [];
+  bufferManager.reset();
   isPlaying = false;
   isPaused = false;
   isStreamingComplete = false;
@@ -132,7 +344,15 @@ async function showOverlay(text) {
   // Update speed display with user's preference
   updateSpeedDisplay();
   
-  updateStatus('Preparing audio...');
+  // Setup MediaSource immediately for progressive streaming
+  if (bufferManager.setupMediaSource()) {
+    console.log('[TTS-Content] MediaSource setup initiated');
+    updateStatus('Preparing for audio streaming...');
+  } else {
+    console.log('[TTS-Content] MediaSource not supported, will use fallback');
+    updateStatus('Buffering audio...');
+  }
+  
   updateTimeDisplay(); // Reset time display to "0s of ..."
 }
 
@@ -178,7 +398,8 @@ function updateTimeDisplay() {
     const currentTime = audioElement.currentTime || 0;
     const duration = audioElement.duration || 0;
     
-    if (duration > 0) {
+    // Show "..." if duration is invalid or streaming is not complete
+    if (duration > 0 && isFinite(duration) && isStreamingComplete) {
       timeText.textContent = `${formatTime(currentTime)} of ${formatTime(duration)}`;
     } else {
       timeText.textContent = `${formatTime(currentTime)} of ...`;
@@ -206,7 +427,7 @@ function stopTimeUpdates() {
 }
 
 // Toggle play/pause
-function togglePlayPause() {
+async function togglePlayPause() {
   console.log('[TTS-Content] Toggle play/pause, current state - playing:', isPlaying, 'paused:', isPaused);
   
   if (audioElement && audioElement.src) {
@@ -227,10 +448,14 @@ function togglePlayPause() {
       updateStatus('Paused');
       stopTimeUpdates();
     }
-  } else if (!isPlaying && audioQueue.length > 0) {
+  } else if (!isPlaying && (audioQueue.length > 0 || bufferManager.chunks.length > 0)) {
     // Playback completed but we have audio chunks - replay from beginning
     console.log('[TTS-Content] Replaying audio from beginning');
-    startPlayback();
+    if (bufferManager.bufferReady) {
+      await startSimplePlayback();
+    } else {
+      startPlayback();
+    }
   }
 }
 
@@ -423,6 +648,7 @@ function stopPlayback() {
   
   stopTimeUpdates();
   audioQueue = [];
+  bufferManager.reset();
   isPlaying = false;
   isPaused = false;
   isStreamingComplete = false;
@@ -476,7 +702,7 @@ function setupAudioForPlayback() {
 }
 
 
-// Process audio chunks
+// Process audio chunks with progressive buffering
 async function processAudioChunk(chunk, isLast) {
   console.log('[TTS-Content] Processing audio chunk, size:', chunk.length, 'isLast:', isLast);
 
@@ -484,10 +710,25 @@ async function processAudioChunk(chunk, isLast) {
     // Convert array back to Uint8Array
     const uint8Array = new Uint8Array(chunk);
     audioQueue.push(uint8Array);
+    
+    // Add chunk to buffer manager (this will append to MediaSource automatically)
+    const shouldStartPlayback = bufferManager.addChunk(uint8Array);
+    
     console.log('[TTS-Content] Added chunk to queue, total chunks:', audioQueue.length);
+    
+    // Start playback if buffer threshold reached and not already playing
+    if (shouldStartPlayback && !isPlaying && !isPaused) {
+      console.log('[TTS-Content] Buffer threshold reached, starting playback');
+      updateStatus('Starting playback...');
+      await startSimplePlayback();
+    } else if (!bufferManager.bufferReady) {
+      // Still buffering - show progress
+      const progress = Math.min(100, (bufferManager.chunkCount / bufferManager.minBufferThreshold) * 100);
+      updateStatus(`Buffering... ${Math.round(progress)}%`);
+    }
   }
 
-  // When streaming is complete, start playback
+  // When streaming is complete
   if (isLast) {
     isStreamingComplete = true;
     console.log('[TTS-Content] Last chunk received, total chunks:', audioQueue.length);
@@ -495,15 +736,133 @@ async function processAudioChunk(chunk, isLast) {
     // Enable download button now that streaming is complete
     updateDownloadButton(true);
     
-    // Start playback with all chunks
-    startPlayback();
+    // Finalize MediaSource stream
+    bufferManager.finalize();
+    
+    // If we haven't started playback yet (very small file), start now
+    if (!isPlaying && !isPaused && audioQueue.length > 0) {
+      console.log('[TTS-Content] Small file, starting playback now');
+      await startSimplePlayback();
+    }
+    
+    // Update status
+    if (isPlaying) {
+      updateStatus('Playing...');
+    } else if (audioQueue.length === 0) {
+      updateStatus('No audio data received');
+    }
   }
 }
 
 
 
 
-// Start playback using HTML audio element
+// Start simple playback - just trigger the audio element to play
+async function startSimplePlayback() {
+  console.log('[TTS-Content] Starting simple playback');
+  
+  // If MediaSource is ready and audio element has source, use it
+  if (bufferManager.mediaSourceReady && audioElement && audioElement.src) {
+    console.log('[TTS-Content] Using MediaSource for progressive playback');
+    try {
+      // Ensure correct playback rate is set before starting
+      audioElement.playbackRate = currentPlaybackSpeed;
+      audioElement.preservesPitch = true;
+      console.log('[TTS-Content] Set playback rate to', currentPlaybackSpeed, 'before starting');
+      
+      // Start playback
+      await audioElement.play();
+      
+      isPlaying = true;
+      isPaused = false;
+      updatePlayPauseButton(true);
+      updateRewindButton(true);
+      updateStatus('Playing...');
+      startTimeUpdates();
+      
+      console.log('[TTS-Content] MediaSource audio playback started');
+      
+      // Handle playback end
+      audioElement.onended = () => {
+        console.log('[TTS-Content] Audio playback ended');
+        stopTimeUpdates();
+        isPlaying = false;
+        updatePlayPauseButton(false);
+        updateStatus('Playback complete');
+        updateTimeDisplay();
+      };
+      
+      return; // Success, exit early
+    } catch (error) {
+      console.error('[TTS-Content] Error starting MediaSource playback:', error);
+    }
+  }
+
+  // If MediaSource not ready or failed, wait a bit and try again, or fall back to blob
+  if (!bufferManager.mediaSourceReady) {
+    console.log('[TTS-Content] MediaSource not ready yet, waiting...');
+    updateStatus('Preparing playback...');
+    
+    // Wait up to 2 seconds for MediaSource to be ready
+    let attempts = 0;
+    const checkReady = async () => {
+      attempts++;
+      if (bufferManager.mediaSourceReady && audioElement && audioElement.src) {
+        console.log('[TTS-Content] MediaSource now ready, starting playback');
+        await startSimplePlayback(); // Retry
+        return;
+      }
+      
+      if (attempts < 20) { // 20 attempts * 100ms = 2 seconds max
+        setTimeout(checkReady, 100);
+      } else {
+        console.log('[TTS-Content] MediaSource timeout, using fallback blob method');
+        await startFallbackPlayback();
+      }
+    };
+    
+    setTimeout(checkReady, 100);
+    return;
+  }
+
+  // Fallback to blob method
+  console.log('[TTS-Content] Using fallback blob method');
+  await startFallbackPlayback();
+}
+
+// Fallback playback method using traditional blob
+async function startFallbackPlayback() {
+  console.log('[TTS-Content] Starting fallback playback');
+  
+  try {
+    if (audioElement.src) {
+      URL.revokeObjectURL(audioElement.src);
+    }
+    
+    const blob = bufferManager.createFallbackBlob();
+    const url = URL.createObjectURL(blob);
+    audioElement.src = url;
+    audioElement.playbackRate = currentPlaybackSpeed;
+    audioElement.preservesPitch = true;
+    
+    await audioElement.play();
+    
+    isPlaying = true;
+    isPaused = false;
+    updatePlayPauseButton(true);
+    updateRewindButton(true);
+    updateStatus('Playing...');
+    startTimeUpdates();
+    
+    console.log('[TTS-Content] Fallback audio playback started');
+    
+  } catch (error) {
+    console.error('[TTS-Content] Fallback playback error:', error);
+    updateStatus('Error playing audio');
+  }
+}
+
+// Start playback using HTML audio element (legacy method)
 async function startPlayback() {
   console.log('[TTS-Content] Starting playback with', audioQueue.length, 'chunks');
   if (audioQueue.length === 0) {
