@@ -291,8 +291,8 @@ function updateDownloadButton(enabled) {
 function increaseSpeed() {
   console.log('[TTS-Content] Increase speed button clicked');
   
-  // Increment by 0.25x, max 2.0x
-  const newSpeed = Math.min(2.0, currentPlaybackSpeed + 0.25);
+  // Increment by 0.1x, max 3.0x
+  const newSpeed = Math.min(3.0, currentPlaybackSpeed + 0.1);
   if (newSpeed !== currentPlaybackSpeed) {
     currentPlaybackSpeed = newSpeed;
     updateSpeedDisplay();
@@ -307,8 +307,8 @@ function increaseSpeed() {
 function decreaseSpeed() {
   console.log('[TTS-Content] Decrease speed button clicked');
   
-  // Decrement by 0.25x, min 0.5x
-  const newSpeed = Math.max(0.5, currentPlaybackSpeed - 0.25);
+  // Decrement by 0.1x, min 0.2x
+  const newSpeed = Math.max(0.2, currentPlaybackSpeed - 0.1);
   if (newSpeed !== currentPlaybackSpeed) {
     currentPlaybackSpeed = newSpeed;
     updateSpeedDisplay();
