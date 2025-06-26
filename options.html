@@ -34,6 +34,7 @@
             <select id="voice-select">
               <option value="alloy">Alloy - Neutral and balanced</option>
               <option value="ash">Ash - Expressive and versatile</option>
+              <option value="ballad">Ballad - Expressive and emotional</option>
               <option value="coral">Coral - Clear and bright</option>
               <option value="echo">Echo - Warm and conversational</option>
               <option value="fable">Fable - Expressive and dynamic</option>
@@ -41,47 +42,28 @@
               <option value="onyx">Onyx - Deep and authoritative</option>
               <option value="sage">Sage - Calm and measured</option>
               <option value="shimmer">Shimmer - Clear and articulate</option>
+              <option value="verse">Verse - Storytelling and narrative</option>
             </select>
             <button id="preview-voice" class="secondary-btn">Preview Voice</button>
           </div>
         </div>
 
-        <div class="setting-item">
-          <label for="speed-slider">Speech Speed: <span id="speed-value">1.0x</span></label>
-          <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
-          <div class="speed-marks">
-            <span>0.5x</span>
-            <span>0.75x</span>
-            <span>1x</span>
-            <span>1.25x</span>
-            <span>1.5x</span>
-            <span>1.75x</span>
-            <span>2x</span>
-          </div>
-        </div>
 
-        <div class="setting-item">
-          <label for="playback-speed-slider">Playback Speed: <span id="playback-speed-value">1.0x</span></label>
-          <input type="range" id="playback-speed-slider" min="0.2" max="3.0" step="0.1" value="1">
-          <div class="speed-marks">
-            <span>0.2x</span>
-            <span>0.8x</span>
-            <span>1x</span>
-            <span>1.5x</span>
-            <span>2x</span>
-            <span>2.5x</span>
-            <span>3x</span>
-          </div>
-          <small>Adjust playback speed while preserving pitch using SoundTouch</small>
-        </div>
 
         <div class="setting-item">
           <label for="model-select">Model Quality</label>
           <select id="model-select">
             <option value="tts-1">TTS-1 (Faster response, standard quality)</option>
             <option value="tts-1-hd">TTS-1-HD (Higher quality, slightly slower)</option>
+            <option value="gpt-4o-mini-tts">GPT-4o Mini TTS (Best quality, advanced steerability, custom instructions)</option>
           </select>
-          <small>TTS-1 is optimized for real-time applications, while TTS-1-HD provides better audio quality</small>
+          <small id="model-description">TTS-1 is optimized for real-time applications, while TTS-1-HD provides better audio quality</small>
+        </div>
+
+        <div class="setting-item" id="instructions-setting" style="display: none;">
+          <label for="instructions-text">Voice Instructions</label>
+          <textarea id="instructions-text" rows="3" placeholder="Describe how you want the voice to sound (e.g., 'Speak with enthusiasm and excitement', 'Use a calm, soothing tone', 'Sound professional and authoritative')"></textarea>
+          <small>Customize the voice characteristics with specific instructions. This feature is only available with GPT-4o Mini TTS model.</small>
         </div>
       </section>
 
@@ -108,6 +90,7 @@
           <ul>
             <li>TTS-1: $0.015 per 1,000 characters</li>
             <li>TTS-1-HD: $0.030 per 1,000 characters</li>
+            <li>GPT-4o Mini TTS: $0.60 per 1M input tokens + $12.00 per 1M output tokens (approx. $0.030 per minute of audio)</li>
           </ul>
           <p>Maximum text length: 4,096 characters per request</p>
         </div>

@@ -68,7 +68,8 @@ h2 {
 }
 
 .setting-group select,
-.setting-group input[type="range"] {
+.setting-group input[type="range"],
+.setting-group textarea {
   width: 100%;
   box-sizing: border-box;
 }
@@ -79,6 +80,16 @@ h2 {
   border-radius: 4px;
   background: white;
   font-size: 14px;
+}
+
+.setting-group textarea {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  background: white;
 }
 
 .setting-group input[type="range"] {

@@ -22,6 +22,7 @@
         <select id="voice-select">
           <option value="alloy">Alloy</option>
           <option value="ash">Ash</option>
+          <option value="ballad">Ballad</option>
           <option value="coral">Coral</option>
           <option value="echo">Echo</option>
           <option value="fable">Fable</option>
@@ -29,27 +30,26 @@
           <option value="onyx">Onyx</option>
           <option value="sage">Sage</option>
           <option value="shimmer">Shimmer</option>
+          <option value="verse">Verse</option>
         </select>
       </div>
 
-      <div class="setting-group">
-        <label for="speed-slider">Speed: <span id="speed-value">1.0x</span></label>
-        <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1">
-      </div>
 
       <div class="setting-group">
         <label for="model-select">Model</label>
         <select id="model-select">
           <option value="tts-1">TTS-1 (Faster)</option>
           <option value="tts-1-hd">TTS-1-HD (Better Quality)</option>
+          <option value="gpt-4o-mini-tts">GPT-4o Mini TTS (Best Quality)</option>
         </select>
       </div>
 
-      <div class="setting-group">
-        <label for="playback-speed-slider">Playback Speed: <span id="playback-speed-value">1.0x</span></label>
-        <input type="range" id="playback-speed-slider" min="0.2" max="3.0" step="0.1" value="1">
-        <small class="setting-note">Adjust playback speed with pitch preservation</small>
+      <div class="setting-group" id="instructions-group" style="display: none;">
+        <label for="instructions-text">Voice Instructions</label>
+        <textarea id="instructions-text" rows="2" placeholder="e.g., 'Speak with enthusiasm'"></textarea>
+        <small class="setting-note">Customize voice characteristics (GPT-4o Mini TTS only)</small>
       </div>
+
     </div>
 
     <div class="actions">

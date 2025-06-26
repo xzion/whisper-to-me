@@ -70,6 +70,23 @@ let currentAudioStream = null;
 let currentReader = null;
 let currentTabId = null;
 
+// Build TTS request body with conditional parameters
+function buildTTSRequestBody(settings, text) {
+  const body = {
+    model: settings.model || 'tts-1',
+    input: text,
+    voice: settings.voice || 'alloy'
+  };
+
+  // Only add instructions for GPT model
+  if (settings.model === 'gpt-4o-mini-tts' && settings.instructions) {
+    body.instructions = settings.instructions;
+  }
+
+  console.log('[TTS] Built request body:', body);
+  return body;
+}
+
 // Test voice functionality
 async function handleTestVoice(text, settings) {
   console.log('[TTS] Testing voice with settings:', settings);
@@ -87,12 +104,7 @@ async function handleTestVoice(text, settings) {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: settings.model || 'tts-1',
-        input: text,
-        voice: settings.voice || 'alloy',
-        speed: settings.speed || 1.0
-      })
+      body: JSON.stringify(buildTTSRequestBody(settings, text))
     });
 
     if (!response.ok) {
@@ -128,10 +140,7 @@ async function startTextToSpeech(text, settings, apiKey, tabId) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: settings.model || 'tts-1',
-        input: text,
-        voice: settings.voice || 'alloy',
-        speed: settings.speed || 1.0,
+        ...buildTTSRequestBody(settings, text),
         response_format: 'mp3'
       })
     });

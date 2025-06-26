@@ -7,11 +7,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     apiKey: document.getElementById('api-key'),
     toggleVisibility: document.getElementById('toggle-visibility'),
     voiceSelect: document.getElementById('voice-select'),
-    speedSlider: document.getElementById('speed-slider'),
-    speedValue: document.getElementById('speed-value'),
-    playbackSpeedSlider: document.getElementById('playback-speed-slider'),
-    playbackSpeedValue: document.getElementById('playback-speed-value'),
     modelSelect: document.getElementById('model-select'),
+    modelDescription: document.getElementById('model-description'),
+    instructionsText: document.getElementById('instructions-text'),
+    instructionsSetting: document.getElementById('instructions-setting'),
     previewText: document.getElementById('preview-text'),
     previewBtn: document.getElementById('preview-voice'),
     saveBtn: document.getElementById('save-btn'),
@@ -31,11 +30,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     elements.voiceSelect.value = settings.voice;
-    elements.speedSlider.value = settings.speed;
-    elements.speedValue.textContent = `${settings.speed}x`;
-    elements.playbackSpeedSlider.value = settings.playbackSpeed;
-    elements.playbackSpeedValue.textContent = `${settings.playbackSpeed}x`;
     elements.modelSelect.value = settings.model;
+    elements.instructionsText.value = settings.instructions;
+    
+    // Update UI based on model selection
+    updateModelUI();
+  }
+
+  // Update UI based on selected model
+  function updateModelUI() {
+    const selectedModel = elements.modelSelect.value;
+    const isGptModel = selectedModel === 'gpt-4o-mini-tts';
+    
+    console.log('[TTS-Options] Updating UI for model:', selectedModel);
+    
+    // Show/hide instructions field
+    elements.instructionsSetting.style.display = isGptModel ? 'block' : 'none';
+    
+    // Filter voices based on model
+    filterVoiceOptions(isGptModel);
+    
+    // Update model description
+    if (isGptModel) {
+      elements.modelDescription.textContent = 'GPT-4o Mini TTS offers advanced voice customization through instructions and the highest quality audio output.';
+    } else {
+      elements.modelDescription.textContent = 'TTS-1 is optimized for real-time applications, while TTS-1-HD provides better audio quality';
+    }
+  }
+
+  // Filter voice options based on model
+  function filterVoiceOptions(isGptModel) {
+    const voiceOptions = elements.voiceSelect.querySelectorAll('option');
+    const currentValue = elements.voiceSelect.value;
+    
+    voiceOptions.forEach(option => {
+      const voiceValue = option.value;
+      const isGptOnlyVoice = voiceValue === 'ballad' || voiceValue === 'verse';
+      
+      if (isGptOnlyVoice && !isGptModel) {
+        // Hide GPT-only voices for non-GPT models
+        option.style.display = 'none';
+        option.disabled = true;
+      } else {
+        // Show all voices for GPT model, or non-GPT voices for other models
+        option.style.display = 'block';
+        option.disabled = false;
+      }
+    });
+    
+    // Reset to default voice if current selection is not available for the model
+    if (!isGptModel && (currentValue === 'ballad' || currentValue === 'verse')) {
+      elements.voiceSelect.value = 'alloy';
+      console.log('[TTS-Options] Reset voice to alloy due to model change');
+    }
   }
 
   // Show toast message
@@ -61,6 +108,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Build API request body with conditional parameters
+  function buildApiRequestBody(settings, text) {
+    const body = {
+      model: settings.model,
+      input: text,
+      voice: settings.voice
+    };
+
+    // Only add instructions for GPT model
+    if (settings.model === 'gpt-4o-mini-tts' && settings.instructions) {
+      body.instructions = settings.instructions;
+    }
+
+    console.log('[TTS-Options] Built API request body:', body);
+    return body;
+  }
+
   // Toggle API key visibility
   elements.toggleVisibility.addEventListener('click', () => {
     const type = elements.apiKey.type === 'password' ? 'text' : 'password';
@@ -69,16 +133,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     elements.toggleVisibility.textContent = type === 'password' ? '👁️' : '🙈';
   });
 
-  // Update speed value display
-  elements.speedSlider.addEventListener('input', () => {
-    const speed = parseFloat(elements.speedSlider.value);
-    elements.speedValue.textContent = `${speed}x`;
-  });
 
-  // Update playback speed value display
-  elements.playbackSpeedSlider.addEventListener('input', () => {
-    const playbackSpeed = parseFloat(elements.playbackSpeedSlider.value);
-    elements.playbackSpeedValue.textContent = `${playbackSpeed}x`;
+
+  // Handle model selection change
+  elements.modelSelect.addEventListener('change', () => {
+    console.log('[TTS-Options] Model changed to:', elements.modelSelect.value);
+    updateModelUI();
   });
 
   // Preview voice
@@ -102,8 +162,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const settings = {
       voice: elements.voiceSelect.value,
-      speed: parseFloat(elements.speedSlider.value),
-      model: elements.modelSelect.value
+      model: elements.modelSelect.value,
+      instructions: elements.instructionsText.value.trim()
     };
     console.log('[TTS-Options] Starting preview with settings:', settings);
 
@@ -123,12 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: settings.model,
-          input: elements.previewText.value,
-          voice: settings.voice,
-          speed: settings.speed
-        })
+        body: JSON.stringify(buildApiRequestBody(settings, elements.previewText.value))
       });
 
       if (!response.ok) {
@@ -199,9 +254,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Save other settings
       const settings = {
         voice: elements.voiceSelect.value,
-        speed: parseFloat(elements.speedSlider.value),
-        playbackSpeed: parseFloat(elements.playbackSpeedSlider.value),
-        model: elements.modelSelect.value
+        model: elements.modelSelect.value,
+        instructions: elements.instructionsText.value.trim()
       };
       console.log('[TTS-Options] Saving settings:', settings);
       await SecureStorage.saveSettings(settings);
@@ -219,19 +273,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[TTS-Options] Reset button clicked');
     if (confirm('Are you sure you want to reset all settings to defaults? This will not clear your API key.')) {
       elements.voiceSelect.value = 'alloy';
-      elements.speedSlider.value = '1';
-      elements.speedValue.textContent = '1.0x';
-      elements.playbackSpeedSlider.value = '1';
-      elements.playbackSpeedValue.textContent = '1.0x';
       elements.modelSelect.value = 'tts-1';
+      elements.instructionsText.value = '';
       elements.previewText.value = 'Welcome to Whisper to Me. This extension uses OpenAI\'s advanced text-to-speech technology to read any selected text aloud with natural, expressive voices.';
+      
+      // Update UI for reset model
+      updateModelUI();
       
       console.log('[TTS-Options] Resetting settings to defaults');
       await SecureStorage.saveSettings({
         voice: 'alloy',
-        speed: 1.0,
-        playbackSpeed: 1.0,
-        model: 'tts-1'
+        model: 'tts-1',
+        instructions: ''
       });
 
       showToast('Settings reset to defaults');
