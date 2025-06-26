@@ -68,7 +68,9 @@
   display: flex;
   gap: 8px;
   justify-content: center;
+  align-items: center;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .tts-control-btn {
@@ -94,6 +96,41 @@
 
 .tts-control-btn svg {
   fill: #333;
+}
+
+/* Speed Controls */
+.tts-speed-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.tts-speed-controls .tts-control-btn {
+  width: 32px;
+  height: 32px;
+  background: #e8f4f8;
+  border: 1px solid #b3d9e8;
+}
+
+.tts-speed-controls .tts-control-btn:hover {
+  background: #d1e8f2;
+  border-color: #9cc5d4;
+}
+
+.tts-speed-controls .tts-control-btn svg {
+  fill: #2c5aa0;
+}
+
+.tts-speed-display {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c5aa0;
+  min-width: 38px;
+  text-align: center;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
 }
 
 .tts-overlay-time {

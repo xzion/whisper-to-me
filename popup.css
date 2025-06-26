@@ -99,6 +99,14 @@ h2 {
   cursor: pointer;
 }
 
+.setting-note {
+  display: block;
+  margin-top: 4px;
+  color: #888;
+  font-size: 11px;
+  font-style: italic;
+}
+
 .actions {
   display: flex;
   gap: 8px;

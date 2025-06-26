@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     voiceSelect: document.getElementById('voice-select'),
     speedSlider: document.getElementById('speed-slider'),
     speedValue: document.getElementById('speed-value'),
+    playbackSpeedSlider: document.getElementById('playback-speed-slider'),
+    playbackSpeedValue: document.getElementById('playback-speed-value'),
     modelSelect: document.getElementById('model-select'),
     previewText: document.getElementById('preview-text'),
     previewBtn: document.getElementById('preview-voice'),
@@ -31,6 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     elements.voiceSelect.value = settings.voice;
     elements.speedSlider.value = settings.speed;
     elements.speedValue.textContent = `${settings.speed}x`;
+    elements.playbackSpeedSlider.value = settings.playbackSpeed;
+    elements.playbackSpeedValue.textContent = `${settings.playbackSpeed}x`;
     elements.modelSelect.value = settings.model;
   }
 
@@ -69,6 +73,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   elements.speedSlider.addEventListener('input', () => {
     const speed = parseFloat(elements.speedSlider.value);
     elements.speedValue.textContent = `${speed}x`;
+  });
+
+  // Update playback speed value display
+  elements.playbackSpeedSlider.addEventListener('input', () => {
+    const playbackSpeed = parseFloat(elements.playbackSpeedSlider.value);
+    elements.playbackSpeedValue.textContent = `${playbackSpeed}x`;
   });
 
   // Preview voice
@@ -190,6 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const settings = {
         voice: elements.voiceSelect.value,
         speed: parseFloat(elements.speedSlider.value),
+        playbackSpeed: parseFloat(elements.playbackSpeedSlider.value),
         model: elements.modelSelect.value
       };
       console.log('[TTS-Options] Saving settings:', settings);
@@ -210,6 +221,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       elements.voiceSelect.value = 'alloy';
       elements.speedSlider.value = '1';
       elements.speedValue.textContent = '1.0x';
+      elements.playbackSpeedSlider.value = '1';
+      elements.playbackSpeedValue.textContent = '1.0x';
       elements.modelSelect.value = 'tts-1';
       elements.previewText.value = 'Welcome to Whisper to Me. This extension uses OpenAI\'s advanced text-to-speech technology to read any selected text aloud with natural, expressive voices.';
       
@@ -217,6 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await SecureStorage.saveSettings({
         voice: 'alloy',
         speed: 1.0,
+        playbackSpeed: 1.0,
         model: 'tts-1'
       });
 

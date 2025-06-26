@@ -4,13 +4,15 @@ const STORAGE_KEYS = {
   API_KEY: 'openai_api_key',
   VOICE: 'voice_preference',
   SPEED: 'speed_preference',
-  MODEL: 'model_preference'
+  MODEL: 'model_preference',
+  PLAYBACK_SPEED: 'playback_speed_preference'
 };
 
 const DEFAULT_SETTINGS = {
   voice: 'alloy',
   speed: 1.0,
-  model: 'tts-1'
+  model: 'tts-1',
+  playbackSpeed: 1.0
 };
 
 class SecureStorage {
@@ -63,6 +65,9 @@ class SecureStorage {
     if (settings.model !== undefined) {
       dataToSave[STORAGE_KEYS.MODEL] = settings.model;
     }
+    if (settings.playbackSpeed !== undefined) {
+      dataToSave[STORAGE_KEYS.PLAYBACK_SPEED] = settings.playbackSpeed;
+    }
 
     return new Promise((resolve) => {
       chrome.storage.sync.set(dataToSave, resolve);
@@ -72,12 +77,13 @@ class SecureStorage {
   // Get all settings
   static async getSettings() {
     return new Promise((resolve) => {
-      const keys = [STORAGE_KEYS.VOICE, STORAGE_KEYS.SPEED, STORAGE_KEYS.MODEL];
+      const keys = [STORAGE_KEYS.VOICE, STORAGE_KEYS.SPEED, STORAGE_KEYS.MODEL, STORAGE_KEYS.PLAYBACK_SPEED];
       chrome.storage.sync.get(keys, (result) => {
         resolve({
           voice: result[STORAGE_KEYS.VOICE] || DEFAULT_SETTINGS.voice,
           speed: result[STORAGE_KEYS.SPEED] || DEFAULT_SETTINGS.speed,
-          model: result[STORAGE_KEYS.MODEL] || DEFAULT_SETTINGS.model
+          model: result[STORAGE_KEYS.MODEL] || DEFAULT_SETTINGS.model,
+          playbackSpeed: result[STORAGE_KEYS.PLAYBACK_SPEED] || DEFAULT_SETTINGS.playbackSpeed
         });
       });
     });

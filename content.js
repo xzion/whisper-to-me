@@ -22,6 +22,9 @@ let hasStartedContinuation = false;
 let lastProcessedChunkIndex = 0; // Track which chunks have been used for playback
 let currentPlaybackOffset = 0; // Track the actual playback position in seconds
 const PLAYBACK_START_THRESHOLD = 4; // Start playback after 4 chunks
+let currentPlaybackSpeed = 1.0; // Current playback speed for SoundTouch
+let soundTouchProcessor = null; // SoundTouch processor instance
+let soundTouchBuffer = null; // Buffer for SoundTouch processing
 
 // Create and inject overlay HTML
 function createOverlay() {
@@ -50,6 +53,19 @@ function createOverlay() {
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
             </svg>
           </button>
+          <div class="tts-speed-controls">
+            <button class="tts-control-btn tts-speed-down" aria-label="Decrease speed">
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M19 13H5v-2h14v2z"/>
+              </svg>
+            </button>
+            <span class="tts-speed-display">1.0x</span>
+            <button class="tts-control-btn tts-speed-up" aria-label="Increase speed">
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="tts-overlay-time">
           <div class="tts-time-display">
@@ -69,19 +85,27 @@ function createOverlay() {
   const playPauseBtn = overlayElement.querySelector('.tts-play-pause');
   const rewindBtn = overlayElement.querySelector('.tts-rewind');
   const downloadBtn = overlayElement.querySelector('.tts-download-btn');
+  const speedUpBtn = overlayElement.querySelector('.tts-speed-up');
+  const speedDownBtn = overlayElement.querySelector('.tts-speed-down');
 
   closeBtn.addEventListener('click', hideOverlay);
   playPauseBtn.addEventListener('click', togglePlayPause);
   rewindBtn.addEventListener('click', rewindAudio);
   downloadBtn.addEventListener('click', downloadAudio);
+  speedUpBtn.addEventListener('click', increaseSpeed);
+  speedDownBtn.addEventListener('click', decreaseSpeed);
 }
 
 // Show overlay with text
-function showOverlay(text) {
+async function showOverlay(text) {
   console.log('[TTS-Content] Showing overlay for text length:', text.length);
   
   // Clear any previous audio state completely
   stopPlayback();
+  
+  // Load user's preferred playback speed
+  const settings = await SecureStorage.getSettings();
+  currentPlaybackSpeed = settings.playbackSpeed || 1.0;
   
   // Ensure all state is properly reset for new session
   audioQueue = [];
@@ -96,6 +120,7 @@ function showOverlay(text) {
   hasStartedContinuation = false;
   lastProcessedChunkIndex = 0;
   currentPlaybackOffset = 0;
+  soundTouchProcessor = null;
   
   // Reset UI state for new session
   updatePlayPauseButton(false);
@@ -105,6 +130,9 @@ function showOverlay(text) {
   
   createOverlay();
   overlayElement.classList.add('visible');
+  
+  // Update speed display with user's preference
+  updateSpeedDisplay();
   
   updateStatus('Preparing audio...');
   updateTimeDisplay(); // Reset time display to "0s of ..."
@@ -264,10 +292,16 @@ function rewindAudio() {
   }
   
   // Start playback from new position
-  audioSource = audioContext.createBufferSource();
-  audioSource.buffer = currentAudioBuffer;
-  audioSource.connect(audioContext.destination);
-  audioSource.start(0, newTime);
+  const audioSourceWrapper = createAudioSource(currentAudioBuffer, newTime);
+  
+  if (!audioSourceWrapper) {
+    console.error('[TTS-Content] Failed to create audio source for rewind');
+    updateStatus('Rewind failed');
+    return;
+  }
+  
+  audioSource = audioSourceWrapper.source;
+  audioSourceWrapper.start(0, newTime);
   
   // Update timing variables
   playbackStartTime = audioContext.currentTime - newTime;
@@ -343,6 +377,113 @@ function updateDownloadButton(enabled) {
     downloadBtn.disabled = !enabled;
     downloadBtn.style.opacity = enabled ? '1' : '0.5';
     downloadBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  }
+}
+
+// Increase playback speed
+function increaseSpeed() {
+  console.log('[TTS-Content] Increase speed button clicked');
+  
+  // Increment by 0.25x, max 2.0x
+  const newSpeed = Math.min(2.0, currentPlaybackSpeed + 0.25);
+  if (newSpeed !== currentPlaybackSpeed) {
+    currentPlaybackSpeed = newSpeed;
+    updateSpeedDisplay();
+    applySpeedChange();
+    
+    // Save the new speed preference
+    SecureStorage.saveSettings({ playbackSpeed: currentPlaybackSpeed });
+  }
+}
+
+// Decrease playback speed
+function decreaseSpeed() {
+  console.log('[TTS-Content] Decrease speed button clicked');
+  
+  // Decrement by 0.25x, min 0.5x
+  const newSpeed = Math.max(0.5, currentPlaybackSpeed - 0.25);
+  if (newSpeed !== currentPlaybackSpeed) {
+    currentPlaybackSpeed = newSpeed;
+    updateSpeedDisplay();
+    applySpeedChange();
+    
+    // Save the new speed preference
+    SecureStorage.saveSettings({ playbackSpeed: currentPlaybackSpeed });
+  }
+}
+
+// Update speed display
+function updateSpeedDisplay() {
+  if (!overlayElement) return;
+  
+  const speedDisplay = overlayElement.querySelector('.tts-speed-display');
+  if (speedDisplay) {
+    speedDisplay.textContent = `${currentPlaybackSpeed.toFixed(1)}x`;
+  }
+}
+
+// Apply speed change to audio processing
+function applySpeedChange() {
+  console.log('[TTS-Content] Applying speed change to:', currentPlaybackSpeed);
+  
+  // For real-time speed changes during playback, we need to restart with new speed
+  if (isPlaying && currentAudioBuffer) {
+    console.log('[TTS-Content] Restarting playback with new speed');
+    
+    // Calculate current playback position
+    let currentTime = 0;
+    if (!isPaused) {
+      currentTime = audioContext.currentTime - playbackStartTime;
+    } else {
+      currentTime = pausedAt;
+    }
+    
+    // Stop current playback
+    if (audioSource) {
+      audioSource.onended = null; // Remove event handler to prevent state issues
+      try {
+        if (audioSource.stop) {
+          audioSource.stop();
+        } else if (audioSource.disconnect) {
+          audioSource.disconnect();
+        }
+      } catch (e) {
+        console.log('[TTS-Content] Audio source already stopped');
+      }
+    }
+    
+    // Start new playback from current position with new speed
+    const audioSourceWrapper = createAudioSource(currentAudioBuffer, currentTime);
+    
+    if (!audioSourceWrapper) {
+      console.error('[TTS-Content] Failed to create audio source for speed change');
+      updateStatus('Speed change failed');
+      return;
+    }
+    
+    audioSource = audioSourceWrapper.source;
+    
+    if (isPaused) {
+      // If we were paused, start and immediately pause
+      audioSourceWrapper.start(0, currentTime);
+      audioContext.suspend();
+      pausedAt = currentTime;
+    } else {
+      // Continue playing
+      audioSourceWrapper.start(0, currentTime);
+      playbackStartTime = audioContext.currentTime - currentTime;
+    }
+    
+    // Restore the onended handler
+    if (audioSource && audioSource.onended !== undefined) {
+      audioSource.onended = () => {
+        console.log('[TTS-Content] Audio playback ended after speed change');
+        isPlaying = false;
+        updatePlayPauseButton(false);
+        updateStatus('Playback complete');
+        updateTimeDisplay();
+      };
+    }
   }
 }
 
@@ -423,16 +564,31 @@ async function downloadAudio() {
 function stopPlayback() {
   console.log('[TTS-Content] Stopping playback');
   if (audioSource) {
-    audioSource.stop();
+    try {
+      if (audioSource.stop) {
+        audioSource.stop();
+      } else if (audioSource.disconnect) {
+        audioSource.disconnect();
+      }
+    } catch (e) {
+      console.log('[TTS-Content] Audio source already stopped');
+    }
     audioSource = null;
     console.log('[TTS-Content] Audio source stopped');
   }
   
   if (continuationAudioSource) {
-    continuationAudioSource.stop();
+    try {
+      continuationAudioSource.stop();
+    } catch (e) {
+      console.log('[TTS-Content] Continuation audio source already stopped');
+    }
     continuationAudioSource = null;
     console.log('[TTS-Content] Continuation audio source stopped');
   }
+  
+  // Clean up any additional audio processing
+  soundTouchProcessor = null;
   
   if (audioContext) {
     audioContext.close();
@@ -467,6 +623,161 @@ function initAudioContext() {
   console.log('[TTS-Content] Initializing audio context');
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
   console.log('[TTS-Content] Audio context created, state:', audioContext.state);
+}
+
+// Create audio source with SoundTouch pitch preservation
+function createAudioSource(audioBuffer, startOffset = 0) {
+  try {
+    // Validate inputs
+    if (!audioContext) {
+      throw new Error('Audio context not initialized');
+    }
+    
+    if (!audioBuffer) {
+      throw new Error('Audio buffer is required');
+    }
+    
+    console.log('[TTS-Content] Creating audio source with speed:', currentPlaybackSpeed, 'offset:', startOffset);
+    
+    // Use SoundTouch for pitch preservation when speed is not 1.0
+    if (currentPlaybackSpeed !== 1.0 && typeof SoundTouch !== 'undefined') {
+      return createSoundTouchSource(audioBuffer, startOffset);
+    } else {
+      // Fallback to standard Web Audio for normal speed or if SoundTouch not available
+      return createStandardSource(audioBuffer, startOffset);
+    }
+    
+  } catch (error) {
+    console.error('[TTS-Content] Error creating audio source:', error);
+    updateStatus('Audio playback error');
+    return null;
+  }
+}
+
+// Create standard Web Audio source (fallback)
+function createStandardSource(audioBuffer, startOffset = 0) {
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  
+  // Apply playback rate for speed control (will change pitch)
+  if (currentPlaybackSpeed !== 1.0) {
+    source.playbackRate.setValueAtTime(currentPlaybackSpeed, audioContext.currentTime);
+    console.log('[TTS-Content] Applied standard playbackRate:', currentPlaybackSpeed);
+  }
+  
+  source.connect(audioContext.destination);
+  
+  return {
+    type: currentPlaybackSpeed === 1.0 ? 'standard' : 'speed-adjusted',
+    source: source,
+    start: (when = 0, offset = startOffset) => {
+      source.start(when, offset);
+    },
+    stop: () => {
+      try {
+        source.stop();
+      } catch (e) {
+        console.log('[TTS-Content] Audio source already stopped');
+      }
+    }
+  };
+}
+
+// Create SoundTouch-processed source with pitch preservation using PitchShifter
+function createSoundTouchSource(audioBuffer, startOffset = 0) {
+  try {
+    console.log('[TTS-Content] Creating PitchShifter source with preserved pitch');
+    
+    const channels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const frameCount = audioBuffer.length;
+    
+    console.log('[TTS-Content] Audio buffer info - channels:', channels, 'sampleRate:', sampleRate, 'frameCount:', frameCount);
+    
+    // Create a stereo buffer if source is mono to ensure proper stereo output
+    let processBuffer = audioBuffer;
+    if (channels === 1) {
+      console.log('[TTS-Content] Converting mono to stereo for proper output');
+      processBuffer = audioContext.createBuffer(2, frameCount, sampleRate);
+      const monoData = audioBuffer.getChannelData(0);
+      const leftChannel = processBuffer.getChannelData(0);
+      const rightChannel = processBuffer.getChannelData(1);
+      
+      // Copy mono data to both stereo channels
+      for (let i = 0; i < frameCount; i++) {
+        leftChannel[i] = monoData[i];
+        rightChannel[i] = monoData[i];
+      }
+    }
+    
+    // Create PitchShifter with stereo buffer
+    const pitchShifter = new PitchShifter(audioContext, processBuffer, 1024);
+    
+    // Set tempo and pitch
+    pitchShifter.tempo = currentPlaybackSpeed; // Adjust speed
+    pitchShifter.pitch = 1.0; // Keep original pitch
+    
+    console.log('[TTS-Content] PitchShifter configured - tempo:', currentPlaybackSpeed, 'pitch: 1.0');
+    
+    // Create nodes to ensure proper stereo distribution
+    const splitter = audioContext.createChannelSplitter(2);
+    const merger = audioContext.createChannelMerger(2);
+    const gainNode = audioContext.createGain();
+    gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
+    
+    // Connect PitchShifter through splitter/merger to ensure both channels are routed
+    pitchShifter.connect(splitter);
+    
+    // Connect both channels from splitter to both inputs of merger
+    // This ensures mono signals get distributed to both stereo channels
+    splitter.connect(merger, 0, 0); // Left to left
+    splitter.connect(merger, 0, 1); // Left to right (for mono sources)
+    if (processBuffer.numberOfChannels === 2) {
+      splitter.connect(merger, 1, 1); // Right to right (for stereo sources)
+    }
+    
+    merger.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    console.log('[TTS-Content] PitchShifter connected via channel splitter/merger for proper stereo routing');
+    
+    return {
+      type: 'pitchshifter-processed',
+      source: pitchShifter,
+      start: (when = 0, offset = startOffset) => {
+        // PitchShifter might not have a start method, try different approaches
+        try {
+          if (typeof pitchShifter.start === 'function') {
+            pitchShifter.start(when, offset);
+          } else if (typeof pitchShifter.play === 'function') {
+            pitchShifter.play();
+          } else {
+            // PitchShifter might auto-start when connected
+            console.log('[TTS-Content] PitchShifter auto-starting via connection');
+          }
+        } catch (e) {
+          console.warn('[TTS-Content] PitchShifter start method issue:', e);
+          // Might auto-start, continue anyway
+        }
+      },
+      stop: () => {
+        try {
+          if (typeof pitchShifter.stop === 'function') {
+            pitchShifter.stop();
+          } else if (typeof pitchShifter.disconnect === 'function') {
+            pitchShifter.disconnect();
+          }
+        } catch (e) {
+          console.log('[TTS-Content] PitchShifter source already stopped');
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('[TTS-Content] PitchShifter processing failed:', error);
+    console.log('[TTS-Content] Falling back to standard playback');
+    return createStandardSource(audioBuffer, startOffset);
+  }
 }
 
 // Process audio chunks
@@ -553,13 +864,19 @@ async function startEarlyPlayback() {
     
     // Create and play audio source
     console.log('[TTS-Content] Creating audio source and starting early playback');
-    audioSource = audioContext.createBufferSource();
-    audioSource.buffer = audioBuffer;
-    audioSource.connect(audioContext.destination);
-    audioSource.start();
+    const audioSourceWrapper = createAudioSource(audioBuffer);
+    
+    if (!audioSourceWrapper) {
+      console.error('[TTS-Content] Failed to create audio source for early playback');
+      updateStatus('Audio playback failed');
+      return;
+    }
+    
+    audioSource = audioSourceWrapper.source;
+    audioSourceWrapper.start();
     playbackStartTime = audioContext.currentTime;
     startTimeUpdates();
-    console.log('[TTS-Content] Early audio playback started');
+    console.log('[TTS-Content] Early audio playback started with type:', audioSourceWrapper.type);
     
     // Handle early playback end - prepare for continuation
     audioSource.onended = () => {
@@ -669,10 +986,17 @@ async function continuePlayback() {
     console.log('[TTS-Content] Starting continuation from offset:', startOffset.toFixed(3), 'seconds');
     
     // Create new audio source with complete buffer but start from offset
-    audioSource = audioContext.createBufferSource();
-    audioSource.buffer = completeAudioBuffer;
-    audioSource.connect(audioContext.destination);
-    audioSource.start(0, startOffset); // Start from where previous buffer ended
+    const audioSourceWrapper = createAudioSource(completeAudioBuffer, startOffset);
+    
+    if (!audioSourceWrapper) {
+      console.error('[TTS-Content] Failed to create audio source for continuation');
+      updateStatus('Audio continuation failed');
+      hasStartedContinuation = false;
+      return;
+    }
+    
+    audioSource = audioSourceWrapper.source;
+    audioSourceWrapper.start(0, startOffset); // Start from where previous buffer ended
     
     // Update playback timing to account for the offset
     playbackStartTime = audioContext.currentTime - startOffset;
@@ -798,13 +1122,19 @@ async function startPlayback() {
     
     // Create and play audio source
     console.log('[TTS-Content] Creating audio source and starting playback');
-    audioSource = audioContext.createBufferSource();
-    audioSource.buffer = audioBuffer;
-    audioSource.connect(audioContext.destination);
-    audioSource.start();
+    const audioSourceWrapper = createAudioSource(audioBuffer);
+    
+    if (!audioSourceWrapper) {
+      console.error('[TTS-Content] Failed to create audio source for playback');
+      updateStatus('Audio playback failed');
+      return;
+    }
+    
+    audioSource = audioSourceWrapper.source;
+    audioSourceWrapper.start();
     playbackStartTime = audioContext.currentTime;
     startTimeUpdates();
-    console.log('[TTS-Content] Audio playback started');
+    console.log('[TTS-Content] Audio playback started with type:', audioSourceWrapper.type);
     
     // Handle playback end
     audioSource.onended = () => {

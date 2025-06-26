@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     speedSlider: document.getElementById('speed-slider'),
     speedValue: document.getElementById('speed-value'),
     modelSelect: document.getElementById('model-select'),
+    playbackSpeedSlider: document.getElementById('playback-speed-slider'),
+    playbackSpeedValue: document.getElementById('playback-speed-value'),
     optionsBtn: document.getElementById('options-btn')
   };
 
@@ -21,6 +23,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     elements.speedSlider.value = settings.speed;
     elements.speedValue.textContent = `${settings.speed}x`;
     elements.modelSelect.value = settings.model;
+    elements.playbackSpeedSlider.value = settings.playbackSpeed;
+    elements.playbackSpeedValue.textContent = `${settings.playbackSpeed}x`;
   }
 
   // Check API key status
@@ -54,6 +58,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   elements.modelSelect.addEventListener('change', async () => {
     console.log('[TTS-Popup] Model changed to:', elements.modelSelect.value);
     await SecureStorage.saveSettings({ model: elements.modelSelect.value });
+  });
+
+  elements.playbackSpeedSlider.addEventListener('input', async () => {
+    const playbackSpeed = parseFloat(elements.playbackSpeedSlider.value);
+    console.log('[TTS-Popup] Playback speed changed to:', playbackSpeed);
+    elements.playbackSpeedValue.textContent = `${playbackSpeed}x`;
+    await SecureStorage.saveSettings({ playbackSpeed });
   });
 
   // Open options page
