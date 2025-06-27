@@ -92,9 +92,23 @@ class BufferManager {
           return;
         }
         
+        // Check if SourceBuffer already exists to prevent multiple creation
+        if (this.sourceBuffer) {
+          console.log('[BufferManager] SourceBuffer already exists, skipping creation');
+          return;
+        }
+        
         this.sourceBuffer = this.mediaSource.addSourceBuffer('audio/mpeg');
         this.sourceBuffer.addEventListener('updateend', () => {
           this.appendingChunk = false;
+          
+          // Check if streaming is complete and all chunks are appended - finalize before trying to append more
+          if (isStreamingComplete && this.appendedChunkCount >= this.chunkCount && this.chunkCount > 0) {
+            console.log('[BufferManager] All chunks appended after streaming complete, calling finalize()');
+            this.finalize();
+            return; // Don't try to append more chunks after finalizing
+          }
+          
           this.appendNextPendingChunk(); // Try to append next chunk
         });
         this.sourceBuffer.addEventListener('error', (e) => {
@@ -194,20 +208,31 @@ class BufferManager {
   }
 
   finalize() {
+    console.log('[BufferManager] finalize() called - MediaSource readyState:', this.mediaSource?.readyState);
+    console.log('[BufferManager] finalize() - SourceBuffer updating:', this.sourceBuffer?.updating);
+    console.log('[BufferManager] finalize() - Chunks appended:', this.appendedChunkCount, '/', this.chunkCount);
+    
     if (this.mediaSource && this.mediaSource.readyState === 'open') {
       try {
         if (!this.sourceBuffer || !this.sourceBuffer.updating) {
+          console.log('[BufferManager] Calling endOfStream() immediately');
           this.mediaSource.endOfStream();
+          console.log('[BufferManager] endOfStream() completed successfully');
         } else {
+          console.log('[BufferManager] SourceBuffer is updating, waiting for updateend event');
           this.sourceBuffer.addEventListener('updateend', () => {
+            console.log('[BufferManager] updateend event fired, now calling endOfStream()');
             if (this.mediaSource && this.mediaSource.readyState === 'open') {
               this.mediaSource.endOfStream();
+              console.log('[BufferManager] endOfStream() completed successfully after updateend');
             }
           }, { once: true });
         }
       } catch (error) {
-        console.warn('[BufferManager] Error finalizing stream:', error);
+        console.log('[BufferManager] Error finalizing stream:', error);
       }
+    } else {
+      console.log('[BufferManager] Cannot finalize - MediaSource not open, readyState:', this.mediaSource?.readyState);
     }
   }
 
