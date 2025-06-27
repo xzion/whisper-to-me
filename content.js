@@ -481,14 +481,18 @@ function updateTimeDisplay() {
   
   // Use audio element if available
   if (audioElement && audioElement.src) {
-    const currentTime = audioElement.currentTime || 0;
-    const duration = audioElement.duration || 0;
+    const rawCurrentTime = audioElement.currentTime || 0;
+    const rawDuration = audioElement.duration || 0;
+    
+    // Calculate speed-adjusted times
+    const adjustedCurrentTime = rawCurrentTime / currentPlaybackSpeed;
+    const adjustedDuration = rawDuration / currentPlaybackSpeed;
     
     // Show "..." if duration is invalid or streaming is not complete
-    if (duration > 0 && isFinite(duration) && isStreamingComplete) {
-      timeText.textContent = `${formatTime(currentTime)} of ${formatTime(duration)}`;
+    if (rawDuration > 0 && isFinite(rawDuration) && isStreamingComplete) {
+      timeText.textContent = `${formatTime(adjustedCurrentTime)} of ${formatTime(adjustedDuration)}`;
     } else {
-      timeText.textContent = `${formatTime(currentTime)} of ...`;
+      timeText.textContent = `${formatTime(adjustedCurrentTime)} of ...`;
     }
   } else {
     // No audio loaded yet, show initial state
@@ -608,6 +612,7 @@ function increaseSpeed() {
     currentPlaybackSpeed = newSpeed;
     updateSpeedDisplay();
     applySpeedChange();
+    updateTimeDisplay(); // Update time display immediately
     
     // Save the new speed preference
     SecureStorage.saveSettings({ playbackSpeed: currentPlaybackSpeed });
@@ -624,6 +629,7 @@ function decreaseSpeed() {
     currentPlaybackSpeed = newSpeed;
     updateSpeedDisplay();
     applySpeedChange();
+    updateTimeDisplay(); // Update time display immediately
     
     // Save the new speed preference
     SecureStorage.saveSettings({ playbackSpeed: currentPlaybackSpeed });
