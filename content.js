@@ -10,6 +10,13 @@ let updateTimeInterval = null;
 let isStreamingComplete = false;
 let currentPlaybackSpeed = 1.0; // Current playback speed
 
+// Drag functionality variables
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialX = 0;
+let initialY = 0;
+
 // Progressive buffering system
 class BufferManager {
   constructor() {
@@ -295,6 +302,7 @@ function createOverlay() {
   const downloadBtn = overlayElement.querySelector('.tts-download-btn');
   const speedUpBtn = overlayElement.querySelector('.tts-speed-up');
   const speedDownBtn = overlayElement.querySelector('.tts-speed-down');
+  const header = overlayElement.querySelector('.tts-overlay-header');
 
   closeBtn.addEventListener('click', hideOverlay);
   playPauseBtn.addEventListener('click', togglePlayPause);
@@ -302,6 +310,9 @@ function createOverlay() {
   downloadBtn.addEventListener('click', downloadAudio);
   speedUpBtn.addEventListener('click', increaseSpeed);
   speedDownBtn.addEventListener('click', decreaseSpeed);
+
+  // Add drag functionality to header
+  setupDragFunctionality(header);
 }
 
 // Show overlay with text
@@ -363,6 +374,81 @@ function hideOverlay() {
     overlayElement.classList.remove('visible');
     stopPlayback();
   }
+}
+
+// Setup drag functionality for header
+function setupDragFunctionality(header) {
+  header.addEventListener('mousedown', startDrag);
+  
+  function startDrag(e) {
+    // Only allow dragging by clicking on the title or header background, not the close button
+    if (e.target.classList.contains('tts-overlay-close')) {
+      return;
+    }
+    
+    isDragging = true;
+    
+    // Get current position of overlay
+    const rect = overlayElement.getBoundingClientRect();
+    initialX = rect.left;
+    initialY = rect.top;
+    
+    // Store mouse position relative to overlay
+    dragStartX = e.clientX - initialX;
+    dragStartY = e.clientY - initialY;
+    
+    // Add visual feedback
+    header.style.cursor = 'grabbing';
+    overlayElement.style.userSelect = 'none';
+    
+    // Add event listeners for mouse move and up
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+    
+    e.preventDefault();
+  }
+  
+  function drag(e) {
+    if (!isDragging) return;
+    
+    // Calculate new position
+    const newX = e.clientX - dragStartX;
+    const newY = e.clientY - dragStartY;
+    
+    // Get viewport dimensions
+    const maxX = window.innerWidth - overlayElement.offsetWidth;
+    const maxY = window.innerHeight - overlayElement.offsetHeight;
+    
+    // Constrain to viewport
+    const constrainedX = Math.max(0, Math.min(newX, maxX));
+    const constrainedY = Math.max(0, Math.min(newY, maxY));
+    
+    // Update overlay position
+    overlayElement.style.position = 'fixed';
+    overlayElement.style.left = constrainedX + 'px';
+    overlayElement.style.top = constrainedY + 'px';
+    overlayElement.style.right = 'auto';
+    overlayElement.style.transform = 'none';
+    
+    e.preventDefault();
+  }
+  
+  function stopDrag() {
+    if (!isDragging) return;
+    
+    isDragging = false;
+    
+    // Remove visual feedback
+    header.style.cursor = 'grab';
+    overlayElement.style.userSelect = '';
+    
+    // Remove event listeners
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', stopDrag);
+  }
+  
+  // Set initial cursor style
+  header.style.cursor = 'grab';
 }
 
 // Update status text
