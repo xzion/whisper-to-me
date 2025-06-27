@@ -20,6 +20,7 @@ A Chrome extension that converts selected text to natural-sounding speech using 
 - **Audio Download**: Save generated audio as MP3 files with timestamps
 - **Secure API Key Storage**: Your OpenAI API key is encrypted and stored locally
 - **Smart UI**: Interface adapts based on selected model and capabilities
+- **Draggable Overlay**: Audio player can be repositioned anywhere on the page
 
 ## Installation
 
@@ -61,6 +62,7 @@ The overlay provides comprehensive playback controls:
 - **Stop**: Click stop to end playback
 - **Download**: Save the generated audio as an MP3 file (available after streaming completes)
 - **Time Display**: Shows current position and total duration
+- **Drag to Move**: Click and drag the overlay header to reposition it anywhere on the page
 
 ### Settings
 
@@ -102,9 +104,10 @@ When using the GPT-4o Mini TTS model, you can provide natural language instructi
 - Wide range from 0.2x (very slow) to 3.0x (very fast)
 - Uses modern HTML5 audio APIs for high-quality speed adjustment
 
-## Supported Text Length
-- Maximum: 4,096 characters per request
-- Longer text will be truncated automatically with user notification
+## Text Processing
+- **Smart Text Segmentation**: Automatically splits long text into segments at sentence boundaries
+- **No Length Restrictions**: Can process text of any length by intelligently breaking it into manageable chunks
+- **Seamless Playback**: Multiple segments play continuously as a single audio stream
 
 ## Pricing
 OpenAI TTS API pricing (updated 2024):
@@ -143,8 +146,8 @@ OpenAI TTS API pricing (updated 2024):
 **No audio playback**
 - Check your OpenAI API key is valid
 - Verify you have API credits available
-- Try a shorter text selection
 - Check browser audio permissions
+- Ensure stable internet connection
 
 **Audio streaming issues**
 - Ensure stable internet connection
@@ -161,6 +164,7 @@ OpenAI TTS API pricing (updated 2024):
 - **Content issues**: Use Chrome DevTools (F12) on the webpage
 - **Background issues**: Go to `chrome://extensions/` and click "service worker"
 - **Audio issues**: Check browser console for MediaSource or audio-related errors
+- **Debug Logging**: The extension includes comprehensive debug utilities for troubleshooting. Check browser console for detailed operation logs.
 
 ## Development
 
@@ -173,7 +177,9 @@ whisper-to-me/
 ├── content.js             # Text selection and audio streaming
 ├── background.js          # OpenAI API integration
 ├── overlay.css            # Audio player overlay styles
-├── utils/storage.js       # Secure storage utility
+├── utils/
+│   ├── storage.js         # Secure storage utility
+│   └── debug.js           # Debug logging utility
 └── icons/                 # Extension icons
 ```
 
@@ -203,6 +209,11 @@ whisper-to-me/
 - **MediaSource API**: Progressive audio streaming
 - **HTML5 Audio**: Pitch-preserving playback speed control
 - **OpenAI TTS API**: Text-to-speech generation with streaming
+
+### Development Utilities
+- **Debug System**: Centralized logging utility with conditional output
+- **Error Handling**: Comprehensive error tracking and user feedback
+- **Performance Monitoring**: Buffer management and streaming optimization
 
 ## Contributing
 
