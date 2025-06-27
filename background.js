@@ -76,20 +76,20 @@ function splitTextAtSentences(text, maxLength = 4096) {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'whisperToMe' && info.selectionText) {
     const text = info.selectionText.trim();
-    console.log('[TTS] Context menu clicked, text length:', text.length);
+    debug.log('[TTS] Context menu clicked, text length:', text.length);
     
     // Split text into segments if it's too long
     const segments = splitTextAtSentences(text);
-    console.log('[TTS] Text split into', segments.length, 'segments');
+    debug.log('[TTS] Text split into', segments.length, 'segments');
 
     // Get settings and API key
-    console.log('[TTS] Retrieving settings and API key');
+    debug.log('[TTS] Retrieving settings and API key');
     const settings = await SecureStorage.getSettings();
     const apiKey = await SecureStorage.getApiKey();
-    console.log('[TTS] Settings retrieved:', { voice: settings.voice, speed: settings.speed, model: settings.model });
+    debug.log('[TTS] Settings retrieved:', { voice: settings.voice, speed: settings.speed, model: settings.model });
     
     if (!apiKey) {
-      console.log('[TTS] No API key configured');
+      debug.log('[TTS] No API key configured');
       chrome.tabs.sendMessage(tab.id, {
         action: 'showError',
         error: 'Please configure your OpenAI API key in the extension settings.'
@@ -98,7 +98,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
 
     // Send message to content script to show overlay
-    console.log('[TTS] Sending startTTS message to content script');
+    debug.log('[TTS] Sending startTTS message to content script');
     chrome.tabs.sendMessage(tab.id, {
       action: 'startTTS',
       text: text,
@@ -106,7 +106,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     });
 
     // Start TTS process with segments
-    console.log('[TTS] Starting TTS process with', segments.length, 'segment(s)');
+    debug.log('[TTS] Starting TTS process with', segments.length, 'segment(s)');
     startTextToSpeechWithSegments(segments, settings, apiKey, tab.id);
   }
 });
@@ -140,21 +140,21 @@ function buildTTSRequestBody(settings, text) {
     body.instructions = settings.instructions;
   }
 
-  console.log('[TTS] Built request body:', body);
+  debug.log('[TTS] Built request body:', body);
   return body;
 }
 
 // Test voice functionality
 async function handleTestVoice(text, settings) {
-  console.log('[TTS] Testing voice with settings:', settings);
+  debug.log('[TTS] Testing voice with settings:', settings);
   const apiKey = await SecureStorage.getApiKey();
   if (!apiKey) {
-    console.log('[TTS] No API key for voice test');
+    debug.log('[TTS] No API key for voice test');
     return { error: 'No API key configured' };
   }
 
   try {
-    console.log('[TTS] Making test API request to OpenAI');
+    debug.log('[TTS] Making test API request to OpenAI');
     const response = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
@@ -165,23 +165,23 @@ async function handleTestVoice(text, settings) {
     });
 
     if (!response.ok) {
-      console.log('[TTS] Test API request failed with status:', response.status);
+      debug.log('[TTS] Test API request failed with status:', response.status);
       const error = await response.json();
       return { error: error.error?.message || 'API request failed' };
     }
 
     // For test, we'll just validate the response
-    console.log('[TTS] Voice test successful');
+    debug.log('[TTS] Voice test successful');
     return { success: true };
   } catch (error) {
-    console.log('[TTS] Voice test error:', error);
+    debug.log('[TTS] Voice test error:', error);
     return { error: error.message };
   }
 }
 
 // Start text-to-speech with multiple segments
 async function startTextToSpeechWithSegments(segments, settings, apiKey, tabId) {
-  console.log('[TTS] Starting TTS with', segments.length, 'segments');
+  debug.log('[TTS] Starting TTS with', segments.length, 'segments');
   currentTabId = tabId;
   
   try {
@@ -190,7 +190,7 @@ async function startTextToSpeechWithSegments(segments, settings, apiKey, tabId) 
       const segmentNumber = i + 1;
       const totalSegments = segments.length;
       
-      console.log(`[TTS] Processing segment ${segmentNumber}/${totalSegments}, length: ${segment.length} characters`);
+      debug.log(`[TTS] Processing segment ${segmentNumber}/${totalSegments}, length: ${segment.length} characters`);
       
       // Keep showing "Buffering..." for all segments until the last one
       
@@ -198,7 +198,7 @@ async function startTextToSpeechWithSegments(segments, settings, apiKey, tabId) 
       await startTextToSpeech(segment, settings, apiKey, tabId, segmentNumber, totalSegments);
     }
     
-    console.log('[TTS] All segments processed successfully');
+    debug.log('[TTS] All segments processed successfully');
     
   } catch (error) {
     console.error('[TTS] Error processing segments:', error);
@@ -211,11 +211,11 @@ async function startTextToSpeechWithSegments(segments, settings, apiKey, tabId) 
 
 // Start text-to-speech with streaming
 async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 1, totalSegments = 1) {
-  console.log('[TTS] Starting TTS API request for', text.length, 'characters');
+  debug.log('[TTS] Starting TTS API request for', text.length, 'characters');
   currentTabId = tabId;
   
   try {
-    console.log('[TTS] Making API request to OpenAI with settings:', {
+    debug.log('[TTS] Making API request to OpenAI with settings:', {
       model: settings.model || 'tts-1',
       voice: settings.voice || 'alloy',
       speed: settings.speed || 1.0
@@ -233,9 +233,9 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
     });
 
     if (!response.ok) {
-      console.log('[TTS] API request failed with status:', response.status);
+      debug.log('[TTS] API request failed with status:', response.status);
       const error = await response.json();
-      console.log('[TTS] API error details:', error);
+      debug.log('[TTS] API error details:', error);
       chrome.tabs.sendMessage(tabId, {
         action: 'ttsError',
         error: error.error?.message || 'API request failed'
@@ -244,7 +244,7 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
     }
 
     // Stream the audio data
-    console.log('[TTS] API request successful, starting audio stream');
+    debug.log('[TTS] API request successful, starting audio stream');
     currentAudioStream = response.body;
     currentReader = response.body.getReader();
     const chunks = [];
@@ -255,13 +255,13 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
       const { done, value } = await currentReader.read();
       
       if (done) {
-        console.log('[TTS] Stream reading complete, received', chunkCount, 'chunks');
+        debug.log('[TTS] Stream reading complete, received', chunkCount, 'chunks');
         break;
       }
       
       chunkCount++;
       chunks.push(value);
-      console.log('[TTS] Received chunk', chunkCount, 'size:', value.length, 'bytes');
+      debug.log('[TTS] Received chunk', chunkCount, 'size:', value.length, 'bytes');
       
       // Send chunk to content script for playback
       chrome.tabs.sendMessage(tabId, {
@@ -273,7 +273,7 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
 
     // Signal completion - only mark as last if this is the final segment
     const isLastSegment = segmentNumber === totalSegments;
-    console.log(`[TTS] Segment ${segmentNumber}/${totalSegments} complete, isLastSegment: ${isLastSegment}`);
+    debug.log(`[TTS] Segment ${segmentNumber}/${totalSegments} complete, isLastSegment: ${isLastSegment}`);
     
     if (isLastSegment) {
       chrome.tabs.sendMessage(tabId, {
@@ -283,7 +283,7 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
       });
     } else {
       // For non-final segments, just indicate this segment is done but more are coming
-      console.log('[TTS] Segment complete, more segments pending...');
+      debug.log('[TTS] Segment complete, more segments pending...');
     }
 
   } catch (error) {
@@ -297,11 +297,11 @@ async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 
 
 // Stop current TTS
 function stopCurrentTTS() {
-  console.log('[TTS] Stopping current TTS');
+  debug.log('[TTS] Stopping current TTS');
   if (currentReader) {
     currentReader.cancel();
     currentReader = null;
-    console.log('[TTS] Audio stream reader cancelled');
+    debug.log('[TTS] Audio stream reader cancelled');
   }
   
   if (currentAudioStream) {
@@ -309,7 +309,7 @@ function stopCurrentTTS() {
   }
   
   if (currentTabId) {
-    console.log('[TTS] Sending stop signal to content script');
+    debug.log('[TTS] Sending stop signal to content script');
     chrome.tabs.sendMessage(currentTabId, {
       action: 'stopPlayback'
     });
@@ -317,5 +317,5 @@ function stopCurrentTTS() {
   }
 }
 
-// Load storage utility
-importScripts('utils/storage.js');
+// Load utilities
+importScripts('utils/debug.js', 'utils/storage.js');

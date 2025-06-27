@@ -29,7 +29,7 @@ class SecureStorage {
     try {
       return atob(encrypted.split('').reverse().join(''));
     } catch (e) {
-      console.error('Failed to decrypt API key:', e);
+      debug.error('Failed to decrypt API key:', e);
       return null;
     }
   }

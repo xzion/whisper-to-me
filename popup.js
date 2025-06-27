@@ -14,9 +14,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load current settings
   async function loadSettings() {
-    console.log('[TTS-Popup] Loading settings');
+    debug.log('[TTS-Popup] Loading settings');
     const settings = await SecureStorage.getSettings();
-    console.log('[TTS-Popup] Settings loaded:', settings);
+    debug.log('[TTS-Popup] Settings loaded:', settings);
     elements.voiceSelect.value = settings.voice;
     elements.modelSelect.value = settings.model;
     elements.instructionsText.value = settings.instructions;
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedModel = elements.modelSelect.value;
     const isGptModel = selectedModel === 'gpt-4o-mini-tts';
     
-    console.log('[TTS-Popup] Updating UI for model:', selectedModel);
+    debug.log('[TTS-Popup] Updating UI for model:', selectedModel);
     
     // Show/hide instructions field
     elements.instructionsGroup.style.display = isGptModel ? 'block' : 'none';
@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Reset to default voice if current selection is not available for the model
     if (!isGptModel && (currentValue === 'ballad' || currentValue === 'verse')) {
       elements.voiceSelect.value = 'alloy';
-      console.log('[TTS-Popup] Reset voice to alloy due to model change');
+      debug.log('[TTS-Popup] Reset voice to alloy due to model change');
       // Save the reset voice
       SecureStorage.saveSettings({ voice: 'alloy' });
     }
@@ -70,9 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Check API key status
   async function checkApiStatus() {
-    console.log('[TTS-Popup] Checking API key status');
+    debug.log('[TTS-Popup] Checking API key status');
     const hasKey = await SecureStorage.hasApiKey();
-    console.log('[TTS-Popup] API key exists:', hasKey);
+    debug.log('[TTS-Popup] API key exists:', hasKey);
     
     if (hasKey) {
       elements.statusIndicator.className = 'status-indicator active';
@@ -85,27 +85,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Save settings when changed
   elements.voiceSelect.addEventListener('change', async () => {
-    console.log('[TTS-Popup] Voice changed to:', elements.voiceSelect.value);
+    debug.log('[TTS-Popup] Voice changed to:', elements.voiceSelect.value);
     await SecureStorage.saveSettings({ voice: elements.voiceSelect.value });
   });
 
 
   elements.modelSelect.addEventListener('change', async () => {
-    console.log('[TTS-Popup] Model changed to:', elements.modelSelect.value);
+    debug.log('[TTS-Popup] Model changed to:', elements.modelSelect.value);
     await SecureStorage.saveSettings({ model: elements.modelSelect.value });
     updateModelUI();
   });
 
   elements.instructionsText.addEventListener('input', async () => {
     const instructions = elements.instructionsText.value.trim();
-    console.log('[TTS-Popup] Instructions changed to:', instructions);
+    debug.log('[TTS-Popup] Instructions changed to:', instructions);
     await SecureStorage.saveSettings({ instructions });
   });
 
 
   // Open options page
   elements.optionsBtn.addEventListener('click', () => {
-    console.log('[TTS-Popup] Opening options page');
+    debug.log('[TTS-Popup] Opening options page');
     chrome.runtime.openOptionsPage();
   });
 
@@ -115,9 +115,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Listen for storage changes
   chrome.storage.onChanged.addListener(async (changes, area) => {
-    console.log('[TTS-Popup] Storage changed:', changes, 'area:', area);
+    debug.log('[TTS-Popup] Storage changed:', changes, 'area:', area);
     if (area === 'sync' && changes.openai_api_key) {
-      console.log('[TTS-Popup] API key changed, rechecking status');
+      debug.log('[TTS-Popup] API key changed, rechecking status');
       await checkApiStatus();
     }
   });
