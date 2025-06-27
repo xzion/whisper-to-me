@@ -9,21 +9,78 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Split text into segments at sentence boundaries
+function splitTextAtSentences(text, maxLength = 4096) {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+  
+  const segments = [];
+  let currentSegment = '';
+  let remainingText = text;
+  
+  while (remainingText.length > 0) {
+    if (remainingText.length <= maxLength) {
+      // Remaining text fits in one segment
+      segments.push(remainingText);
+      break;
+    }
+    
+    // Find the portion that fits within the limit
+    let segmentText = remainingText.substring(0, maxLength);
+    
+    // Find the last sentence boundary (period followed by space or end)
+    let lastPeriodIndex = -1;
+    for (let i = segmentText.length - 1; i >= 0; i--) {
+      if (segmentText[i] === '.' && (i === segmentText.length - 1 || segmentText[i + 1] === ' ')) {
+        lastPeriodIndex = i;
+        break;
+      }
+    }
+    
+    if (lastPeriodIndex > 0 && lastPeriodIndex > maxLength * 0.5) {
+      // Found a good sentence boundary and it's not too short
+      segmentText = segmentText.substring(0, lastPeriodIndex + 1);
+    } else {
+      // No good sentence boundary found, look for other punctuation
+      const punctuation = ['.', '!', '?', ';', ':', ','];
+      let lastPuncIndex = -1;
+      
+      for (let i = segmentText.length - 1; i >= maxLength * 0.5; i--) {
+        if (punctuation.includes(segmentText[i])) {
+          lastPuncIndex = i;
+          break;
+        }
+      }
+      
+      if (lastPuncIndex > 0) {
+        segmentText = segmentText.substring(0, lastPuncIndex + 1);
+      } else {
+        // No punctuation found, split at last space
+        let lastSpaceIndex = segmentText.lastIndexOf(' ');
+        if (lastSpaceIndex > maxLength * 0.5) {
+          segmentText = segmentText.substring(0, lastSpaceIndex);
+        }
+        // If no space found either, we'll use the full maxLength
+      }
+    }
+    
+    segments.push(segmentText.trim());
+    remainingText = remainingText.substring(segmentText.length).trim();
+  }
+  
+  return segments.filter(segment => segment.length > 0);
+}
+
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'whisperToMe' && info.selectionText) {
     const text = info.selectionText.trim();
     console.log('[TTS] Context menu clicked, text length:', text.length);
     
-    // Check text length (OpenAI limit is 4096 characters)
-    if (text.length > 4096) {
-      console.log('[TTS] Text too long:', text.length, 'characters');
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'showError',
-        error: 'Selected text is too long. Maximum 4096 characters allowed.'
-      });
-      return;
-    }
+    // Split text into segments if it's too long
+    const segments = splitTextAtSentences(text);
+    console.log('[TTS] Text split into', segments.length, 'segments');
 
     // Get settings and API key
     console.log('[TTS] Retrieving settings and API key');
@@ -48,9 +105,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       settings: settings
     });
 
-    // Start TTS process
-    console.log('[TTS] Starting TTS process');
-    startTextToSpeech(text, settings, apiKey, tab.id);
+    // Start TTS process with segments
+    console.log('[TTS] Starting TTS process with', segments.length, 'segment(s)');
+    startTextToSpeechWithSegments(segments, settings, apiKey, tab.id);
   }
 });
 
@@ -122,8 +179,38 @@ async function handleTestVoice(text, settings) {
   }
 }
 
+// Start text-to-speech with multiple segments
+async function startTextToSpeechWithSegments(segments, settings, apiKey, tabId) {
+  console.log('[TTS] Starting TTS with', segments.length, 'segments');
+  currentTabId = tabId;
+  
+  try {
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const segmentNumber = i + 1;
+      const totalSegments = segments.length;
+      
+      console.log(`[TTS] Processing segment ${segmentNumber}/${totalSegments}, length: ${segment.length} characters`);
+      
+      // Keep showing "Buffering..." for all segments until the last one
+      
+      // Process this segment
+      await startTextToSpeech(segment, settings, apiKey, tabId, segmentNumber, totalSegments);
+    }
+    
+    console.log('[TTS] All segments processed successfully');
+    
+  } catch (error) {
+    console.error('[TTS] Error processing segments:', error);
+    chrome.tabs.sendMessage(tabId, {
+      action: 'ttsError',
+      error: `Error processing text segments: ${error.message}`
+    });
+  }
+}
+
 // Start text-to-speech with streaming
-async function startTextToSpeech(text, settings, apiKey, tabId) {
+async function startTextToSpeech(text, settings, apiKey, tabId, segmentNumber = 1, totalSegments = 1) {
   console.log('[TTS] Starting TTS API request for', text.length, 'characters');
   currentTabId = tabId;
   
@@ -184,13 +271,20 @@ async function startTextToSpeech(text, settings, apiKey, tabId) {
       });
     }
 
-    // Signal completion
-    console.log('[TTS] Sending completion signal to content script');
-    chrome.tabs.sendMessage(tabId, {
-      action: 'audioChunk',
-      chunk: [],
-      isLast: true
-    });
+    // Signal completion - only mark as last if this is the final segment
+    const isLastSegment = segmentNumber === totalSegments;
+    console.log(`[TTS] Segment ${segmentNumber}/${totalSegments} complete, isLastSegment: ${isLastSegment}`);
+    
+    if (isLastSegment) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'audioChunk',
+        chunk: [],
+        isLast: true
+      });
+    } else {
+      // For non-final segments, just indicate this segment is done but more are coming
+      console.log('[TTS] Segment complete, more segments pending...');
+    }
 
   } catch (error) {
     console.error('TTS Error:', error);

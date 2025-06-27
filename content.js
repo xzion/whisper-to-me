@@ -527,7 +527,12 @@ async function togglePlayPause() {
       isPlaying = true;
       isPaused = false;
       updatePlayPauseButton(true);
-      updateStatus('Playing...');
+      // Only show "Playing..." if streaming is complete, otherwise keep showing "Buffering..."
+      if (isStreamingComplete) {
+        updateStatus('Playing...');
+      } else {
+        updateStatus('Buffering...');
+      }
       startTimeUpdates();
     } else {
       console.log('[TTS-Content] Pausing audio element');
@@ -811,12 +816,13 @@ async function processAudioChunk(chunk, isLast) {
     // Start playback if buffer threshold reached and not already playing
     if (shouldStartPlayback && !isPlaying && !isPaused) {
       console.log('[TTS-Content] Buffer threshold reached, starting playback');
-      updateStatus('Starting playback...');
+      // Don't update status here - let the chunks keep showing "Buffering..." until complete
       await startSimplePlayback();
-    } else if (!bufferManager.bufferReady) {
-      // Still buffering - show progress
-      const progress = Math.min(100, (bufferManager.chunkCount / bufferManager.minBufferThreshold) * 100);
-      updateStatus(`Buffering... ${Math.round(progress)}%`);
+    }
+    
+    // Show buffering status while chunks are coming in, but respect paused state
+    if (!isStreamingComplete && !isPaused) {
+      updateStatus('Buffering...');
     }
   }
 
@@ -837,11 +843,16 @@ async function processAudioChunk(chunk, isLast) {
       await startSimplePlayback();
     }
     
-    // Update status
-    if (isPlaying) {
+    // Update status now that streaming is complete
+    if (isPlaying && !isPaused) {
       updateStatus('Playing...');
+    } else if (isPaused) {
+      updateStatus('Paused');
     } else if (audioQueue.length === 0) {
       updateStatus('No audio data received');
+    } else {
+      // Audio is ready but not playing yet
+      updateStatus('Ready');
     }
   }
 }
@@ -869,7 +880,10 @@ async function startSimplePlayback() {
       isPaused = false;
       updatePlayPauseButton(true);
       updateRewindButton(true);
-      updateStatus('Playing...');
+      // Don't update status to "Playing..." here if streaming is still in progress
+      if (isStreamingComplete) {
+        updateStatus('Playing...');
+      }
       startTimeUpdates();
       
       console.log('[TTS-Content] MediaSource audio playback started');
@@ -943,7 +957,10 @@ async function startFallbackPlayback() {
     isPaused = false;
     updatePlayPauseButton(true);
     updateRewindButton(true);
-    updateStatus('Playing...');
+    // Don't update status to "Playing..." here if streaming is still in progress
+    if (isStreamingComplete) {
+      updateStatus('Playing...');
+    }
     startTimeUpdates();
     
     console.log('[TTS-Content] Fallback audio playback started');
