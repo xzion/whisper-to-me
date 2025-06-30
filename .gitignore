@@ -13,6 +13,7 @@ Thumbs.db
 # Node modules (if we add any build tools later)
 node_modules/
 temp/
+misc/
 
 # Logs
 *.log
